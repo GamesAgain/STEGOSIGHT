@@ -6,7 +6,10 @@ Adaptive Steganography
 import numpy as np
 from PIL import Image
 from pathlib import Path
-import cv2
+try:  # pragma: no cover - OpenCV is optional
+    import cv2  # type: ignore
+except Exception:  # pragma: no cover - fallback for minimal environments
+    cv2 = None  # type: ignore
 from utils.logger import setup_logger, log_operation
 from .lsb import LSBSteganography
 
@@ -21,11 +24,20 @@ class AdaptiveSteganography:
     
     def __init__(self):
         """Initialize adaptive steganography"""
-        self.lsb = LSBSteganography(mode='adaptive')
+        self.lsb = LSBSteganography(mode='sequential')
+        self.last_method = 'adaptive'
         logger.debug("AdaptiveSteganography initialized")
     
     @log_operation("Adaptive Embed")
-    def embed(self, cover_path, secret_data, method='auto', output_path=None):
+    def embed(
+        self,
+        cover_path,
+        secret_data,
+        method='auto',
+        output_path=None,
+        *,
+        options=None,
+    ):
         """
         ซ่อนข้อมูลโดยเลือกวิธีที่เหมาะสมอัตโนมัติ
         
@@ -48,18 +60,32 @@ class AdaptiveSteganography:
         if method == 'auto' or method == 'adaptive':
             method = self._select_best_method(cover_path, secret_data)
             logger.info(f"Auto-selected method: {method}")
-        
+
+        self.last_method = method
+        options = options or {}
+
         # Delegate to appropriate method
         if method == 'lsb':
-            return self.lsb.embed(cover_path, secret_data, output_path)
+            lsb_bits = options.get('lsb_bits')
+            lsb_mode = options.get('lsb_mode', self.lsb.mode)
+            bits = lsb_bits if lsb_bits is not None else self.lsb.bits_per_channel
+            stego = LSBSteganography(bits_per_channel=bits, mode=lsb_mode)
+            return stego.embed(cover_path, secret_data, output_path)
         elif method == 'pvd':
             from .pvd import PVDSteganography
-            pvd = PVDSteganography()
-            return pvd.embed(cover_path, secret_data, output_path)
+            pair_skip = options.get('pair_skip')
+            pvd = PVDSteganography(pair_skip=pair_skip or 1)
+            return pvd.embed(cover_path, secret_data, output_path, pair_skip=pair_skip)
         elif method == 'dct':
             from .jpeg_dct import JPEGDCTSteganography
-            dct = JPEGDCTSteganography()
-            return dct.embed(cover_path, secret_data, output_path)
+            coefficients = options.get('coefficients')
+            dct = JPEGDCTSteganography(coefficients=coefficients)
+            return dct.embed(
+                cover_path,
+                secret_data,
+                output_path,
+                coefficients=coefficients,
+            )
         else:
             raise ValueError(f"Unknown method: {method}")
     
@@ -154,31 +180,35 @@ class AdaptiveSteganography:
             float: คะแนนความซับซ้อน (0-100)
         """
         try:
-            # Load image
-            image = cv2.imread(str(image_path))
-            if image is None:
-                image = np.array(Image.open(image_path))
-            
-            # Convert to grayscale
-            if len(image.shape) == 3:
-                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            # Load image using OpenCV if available for performance; otherwise PIL
+            if cv2 is not None:
+                image = cv2.imread(str(image_path))
+                if image is None:
+                    image = np.array(Image.open(image_path))
+                if len(image.shape) == 3:
+                    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                else:
+                    gray = image
+
+                edges = cv2.Canny(gray, 100, 200)
+                edge_density = float(np.sum(edges > 0) / edges.size * 100)
+                laplacian = cv2.Laplacian(gray, cv2.CV_64F)
+                texture_complexity = float(laplacian.var())
             else:
-                gray = image
-            
-            # Calculate edge density using Canny
-            edges = cv2.Canny(gray, 100, 200)
-            edge_density = np.sum(edges > 0) / edges.size * 100
-            
-            # Calculate texture complexity using Laplacian variance
-            laplacian = cv2.Laplacian(gray, cv2.CV_64F)
-            texture_complexity = laplacian.var()
-            
-            # Normalize texture complexity to 0-100 scale
-            texture_score = min(100, texture_complexity / 50)
-            
-            # Combined complexity score
-            complexity = (edge_density * 0.6 + texture_score * 0.4)
-            
+                pil_image = Image.open(image_path)
+                if pil_image.mode != "L":
+                    pil_image = pil_image.convert("L")
+                gray = np.array(pil_image, dtype=np.float32)
+
+                gy, gx = np.gradient(gray)
+                gradient_magnitude = np.hypot(gx, gy)
+                threshold = np.percentile(gradient_magnitude, 85)
+                edge_density = float(np.mean(gradient_magnitude > threshold) * 100)
+                texture_complexity = float(np.var(gradient_magnitude))
+
+            texture_score = float(min(100.0, texture_complexity / 50.0))
+            complexity = float((edge_density * 0.6) + (texture_score * 0.4))
+
             return complexity
             
         except Exception as e:
