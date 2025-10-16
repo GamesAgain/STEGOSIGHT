@@ -11,6 +11,7 @@ __all__ = [
     "create_text_payload",
     "create_file_payload",
     "unpack_payload",
+    "is_payload_blob",
 ]
 
 _MAGIC = b"STEGOSIGHT"
@@ -107,3 +108,44 @@ def unpack_payload(blob: bytes) -> Dict[str, Any]:
             "encrypted": False,
         }
         return {"kind": "binary", "metadata": metadata, "data": blob, "text": None}
+
+
+def is_payload_blob(blob: bytes) -> bool:
+    """Return ``True`` if *blob* looks like a structured STEGOSIGHT payload."""
+
+    if not isinstance(blob, (bytes, bytearray, memoryview)):
+        return False
+
+    data = bytes(blob)
+    if len(data) < _HEADER_LEN:
+        return False
+
+    if not data.startswith(_MAGIC):
+        return False
+
+    try:
+        version = data[len(_MAGIC)]
+    except IndexError:  # pragma: no cover - defensive guard
+        return False
+
+    if version != _VERSION:
+        return False
+
+    header_end = len(_MAGIC) + 1
+    meta_len_slice = data[header_end : header_end + 4]
+    if len(meta_len_slice) != 4:
+        return False
+
+    meta_len = struct.unpack(">I", meta_len_slice)[0]
+    meta_start = header_end + 4
+    meta_end = meta_start + meta_len
+    if meta_end > len(data):
+        return False
+
+    meta_bytes = data[meta_start:meta_end]
+    try:
+        json.loads(meta_bytes.decode("utf-8"))
+    except Exception:
+        return False
+
+    return True
