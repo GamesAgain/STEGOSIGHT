@@ -157,7 +157,7 @@ class WorkerThread(QThread):
             logger.info("Extraction pipeline not available, using simulator: %s", e)
             self._step(30, "กำลังโหลดไฟล์…")
             self._step(65, "กำลังดึงข้อมูล…")
-            data = b"This is demo extracted data from simulator."
+            data = b"This is demo extracted data from the simulator."
             self._step(100, "เสร็จสิ้น")
             return {"data": data, "method": self.params.get('method', 'adaptive')}
 

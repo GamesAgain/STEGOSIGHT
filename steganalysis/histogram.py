@@ -30,3 +30,8 @@ class HistogramAnalyzer:
             score_acc += float(dev.mean())
         normalized = min(1.0, score_acc / 0.06)
         return int(normalized * 100)
+
+
+class HistogramAnalysis(HistogramAnalyzer):
+    """Backward-compatible alias used throughout the risk scoring pipeline."""
+    pass

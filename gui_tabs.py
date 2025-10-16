@@ -1,5 +1,4 @@
-"""
-STEGOSIGHT GUI Tabs (v0.1.0)
+"""STEGOSIGHT GUI Tabs (v0.1.0)
 Embed / Extract / Analyze / Neutralize tabs matching the first-design layout.
 - Uses WorkerThread from gui.py
 - Updates main window status/progress
