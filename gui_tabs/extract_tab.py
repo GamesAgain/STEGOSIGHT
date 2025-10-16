@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap
@@ -22,9 +22,11 @@ from PyQt5.QtWidgets import (
     QWidget,
     QComboBox,
     QCheckBox,
+    QStackedWidget,
 )
 
 from .common_widgets import InfoPanel
+from utils.payloads import unpack_payload
 
 
 class ExtractTab(QWidget):
@@ -36,6 +38,8 @@ class ExtractTab(QWidget):
 
         self.stego_path: Optional[Path] = None
         self.extracted_data: Optional[bytes] = None
+        self.extracted_payload: Optional[Dict[str, Any]] = None
+        self._is_busy = False
 
         self._init_ui()
 
@@ -135,14 +139,38 @@ class ExtractTab(QWidget):
         group = QGroupBox("4. ผลลัพธ์")
         layout = QVBoxLayout(group)
 
+        self.result_stack = QStackedWidget()
+
+        text_widget = QWidget()
+        text_layout = QVBoxLayout(text_widget)
+        text_layout.setContentsMargins(0, 0, 0, 0)
         self.result_text = QTextEdit()
         self.result_text.setPlaceholderText("ข้อมูลที่ดึงออกมาจะแสดงที่นี่...")
         self.result_text.setReadOnly(True)
-        layout.addWidget(self.result_text)
+        text_layout.addWidget(self.result_text)
+        self.result_stack.addWidget(text_widget)
 
-        save_btn = QPushButton("💾 บันทึกเป็นไฟล์")
-        save_btn.clicked.connect(self._save_extracted)
-        layout.addWidget(save_btn, 0, Qt.AlignRight)
+        file_widget = QWidget()
+        file_layout = QVBoxLayout(file_widget)
+        file_layout.setContentsMargins(0, 0, 0, 0)
+        file_panel, file_labels = self._create_info_panel(["ชื่อไฟล์", "สกุลไฟล์", "ขนาด"])
+        self.file_result_panel = file_panel
+        self.file_result_labels = file_labels
+        file_layout.addWidget(file_panel)
+        self.file_hint_label = QLabel("ข้อมูลไฟล์ที่ดึงได้จะแสดงที่นี่")
+        self.file_hint_label.setObjectName("infoBox")
+        self.file_hint_label.setWordWrap(True)
+        file_layout.addWidget(self.file_hint_label)
+        file_layout.addStretch()
+        self.result_stack.addWidget(file_widget)
+
+        layout.addWidget(self.result_stack)
+        self.result_stack.setCurrentIndex(0)
+
+        self.save_btn = QPushButton("💾 บันทึกเป็นไฟล์")
+        self.save_btn.clicked.connect(self._save_extracted)
+        self.save_btn.setEnabled(False)
+        layout.addWidget(self.save_btn, 0, Qt.AlignRight)
         return group
 
     def _create_preview_group(self) -> QGroupBox:
@@ -173,6 +201,37 @@ class ExtractTab(QWidget):
     def _create_info_panel(self, labels):
         panel = InfoPanel(labels)
         return panel, panel.value_labels
+
+    def _reset_results(self) -> None:
+        self.extracted_data = None
+        self.extracted_payload = None
+        self.result_text.clear()
+        self.result_stack.setCurrentIndex(0)
+        for label in self.file_result_labels.values():
+            label.setText("—")
+        self.file_hint_label.setText("ข้อมูลไฟล์ที่ดึงได้จะแสดงที่นี่")
+        for key in ("วิธีการตรวจพบ", "ขนาดข้อมูล", "สถานะการเข้ารหัส"):
+            if key in self.details_labels:
+                self.details_labels[key].setText("—")
+        self._update_save_state()
+
+    def _update_save_state(self) -> None:
+        if hasattr(self, "save_btn"):
+            can_save = self.extracted_payload is not None and not self._is_busy
+            self.save_btn.setEnabled(can_save)
+
+    def _format_size(self, size: int) -> str:
+        if size <= 0:
+            return "0 bytes"
+        units = ["bytes", "KB", "MB", "GB", "TB"]
+        value = float(size)
+        for unit in units:
+            if value < 1024 or unit == units[-1]:
+                if unit == "bytes":
+                    return f"{int(value)} bytes"
+                return f"{value:.2f} {unit}"
+            value /= 1024
+        return f"{size} bytes"
 
     # ------------------------------------------------------------------
     def _browse_file(self) -> None:
@@ -222,6 +281,7 @@ class ExtractTab(QWidget):
             "method": method,
         }
 
+        self._reset_results()
         self._set_busy(True)
         self.parent_window.start_worker(
             "extract",
@@ -232,34 +292,101 @@ class ExtractTab(QWidget):
         )
 
     def _on_extract_result(self, result: Dict[str, object]) -> None:
-        self.extracted_data = result.get("data") if isinstance(result, dict) else None
-        method = result.get("method", "adaptive") if isinstance(result, dict) else "adaptive"
-        if isinstance(self.extracted_data, (bytes, bytearray)):
-            try:
-                decoded = self.extracted_data.decode("utf-8")
-                self.result_text.setPlainText(decoded)
-            except Exception:
-                self.result_text.setPlainText(
-                    f"ดึงข้อมูลไบนารีสำเร็จ ({len(self.extracted_data)} bytes)\n\nกรุณาบันทึกเป็นไฟล์"
-                )
-            self.details_labels["ขนาดข้อมูล"].setText(f"{len(self.extracted_data)} bytes")
-        else:
+        self.extracted_data = None
+        self.extracted_payload = None
+
+        if not isinstance(result, dict):
+            self.result_text.setPlainText("ไม่สามารถอ่านข้อมูลที่ดึงมาได้")
+            QMessageBox.warning(self, "คำเตือน", "รูปแบบผลลัพธ์ไม่ถูกต้อง")
+            self._update_save_state()
+            return
+
+        raw_data = result.get("data")
+        method = result.get("method", "adaptive")
+
+        if not isinstance(raw_data, (bytes, bytearray)):
             self.result_text.setPlainText("ไม่สามารถอ่านข้อมูลที่ดึงมาได้")
             self.details_labels["ขนาดข้อมูล"].setText("—")
+            self.details_labels["สถานะการเข้ารหัส"].setText("ไม่ทราบ")
+            self.details_labels["วิธีการตรวจพบ"].setText(method.upper())
+            self._update_save_state()
+            QMessageBox.warning(self, "คำเตือน", "ไม่พบข้อมูลที่ถูกซ่อนอยู่")
+            return
 
-        self.details_labels["วิธีการตรวจพบ"].setText(method.upper())
-        self.details_labels["สถานะการเข้ารหัส"].setText(
-            "ถอดรหัสแล้ว" if self.encrypted_cb.isChecked() else "ไม่มีการเข้ารหัส"
-        )
+        try:
+            payload = unpack_payload(bytes(raw_data))
+        except Exception as exc:
+            self.result_text.setPlainText("ไม่สามารถอ่านข้อมูลที่ดึงมาได้")
+            self.details_labels["ขนาดข้อมูล"].setText("—")
+            self.details_labels["สถานะการเข้ารหัส"].setText("ไม่ทราบ")
+            self.details_labels["วิธีการตรวจพบ"].setText(str(method).upper())
+            self._update_save_state()
+            QMessageBox.warning(self, "คำเตือน", f"ไม่สามารถถอดข้อมูลได้:\n{exc}")
+            return
+
+        self.extracted_payload = payload
+        self.extracted_data = payload.get("data")
+        metadata = payload.get("metadata", {})
+        kind = payload.get("kind", "binary")
+        size = int(metadata.get("size", len(self.extracted_data) if self.extracted_data else 0))
+
+        if kind == "text":
+            text = payload.get("text")
+            if text is None and self.extracted_data is not None:
+                text = self.extracted_data.decode("utf-8", errors="replace")
+            self.result_text.setPlainText(text or "")
+            self.result_stack.setCurrentIndex(0)
+        else:
+            name = metadata.get("name") or "extracted_secret"
+            extension = metadata.get("extension")
+            if not extension and name:
+                extension = Path(name).suffix.lstrip(".")
+            self.file_result_labels["ชื่อไฟล์"].setText(name)
+            self.file_result_labels["สกุลไฟล์"].setText(extension or "—")
+            self.file_result_labels["ขนาด"].setText(self._format_size(size))
+            self.file_hint_label.setText("กด \"บันทึกเป็นไฟล์\" เพื่อบันทึกข้อมูลที่ถอดได้")
+            self.result_stack.setCurrentIndex(1)
+
+        self.details_labels["วิธีการตรวจพบ"].setText(str(method).upper())
+        self.details_labels["ขนาดข้อมูล"].setText(self._format_size(size))
+        encrypted_flag = metadata.get("encrypted")
+        if encrypted_flag:
+            status_text = "ถอดรหัสแล้ว"
+        elif encrypted_flag is False:
+            status_text = "ไม่มีการเข้ารหัส"
+        else:
+            status_text = "ไม่ทราบ"
+        self.details_labels["สถานะการเข้ารหัส"].setText(status_text)
+
+        self._update_save_state()
         QMessageBox.information(self, "สำเร็จ", "ดึงข้อมูลสำเร็จ!")
 
     def _save_extracted(self) -> None:
-        if not isinstance(self.extracted_data, (bytes, bytearray)):
+        if not self.extracted_payload or not isinstance(self.extracted_data, (bytes, bytearray)):
             QMessageBox.warning(self, "คำเตือน", "ยังไม่มีข้อมูลที่ดึงออกมา")
             return
-        filename, _ = QFileDialog.getSaveFileName(self, "บันทึกไฟล์", "", "All Files (*.*)")
+
+        metadata = self.extracted_payload.get("metadata", {})
+        kind = self.extracted_payload.get("kind", "binary")
+        default_name = "extracted_secret"
+        file_filter = "All Files (*.*)"
+
+        if kind == "text":
+            default_name = "extracted_secret.txt"
+            file_filter = "Text Files (*.txt);;All Files (*.*)"
+        else:
+            name = metadata.get("name")
+            if name:
+                default_name = name
+            else:
+                extension = metadata.get("extension")
+                if extension:
+                    default_name = f"extracted_secret.{extension}"
+
+        initial_path = str((self.stego_path.parent / default_name) if self.stego_path else default_name)
+        filename, _ = QFileDialog.getSaveFileName(self, "บันทึกไฟล์", initial_path, file_filter)
         if filename:
-            Path(filename).write_bytes(self.extracted_data)
+            Path(filename).write_bytes(bytes(self.extracted_data))
             QMessageBox.information(self, "สำเร็จ", f"บันทึกไฟล์สำเร็จ: {filename}")
 
     def _on_worker_error(self, error: str) -> None:
@@ -270,4 +397,6 @@ class ExtractTab(QWidget):
         self._set_busy(False)
 
     def _set_busy(self, busy: bool) -> None:
+        self._is_busy = busy
         self.action_btn.setEnabled(not busy)
+        self._update_save_state()
