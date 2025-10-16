@@ -22,10 +22,19 @@ class AdaptiveSteganography:
     def __init__(self):
         """Initialize adaptive steganography"""
         self.lsb = LSBSteganography(mode='adaptive')
+        self.last_method = 'adaptive'
         logger.debug("AdaptiveSteganography initialized")
     
     @log_operation("Adaptive Embed")
-    def embed(self, cover_path, secret_data, method='auto', output_path=None):
+    def embed(
+        self,
+        cover_path,
+        secret_data,
+        method='auto',
+        output_path=None,
+        *,
+        options=None,
+    ):
         """
         ซ่อนข้อมูลโดยเลือกวิธีที่เหมาะสมอัตโนมัติ
         
@@ -48,18 +57,32 @@ class AdaptiveSteganography:
         if method == 'auto' or method == 'adaptive':
             method = self._select_best_method(cover_path, secret_data)
             logger.info(f"Auto-selected method: {method}")
-        
+
+        self.last_method = method
+        options = options or {}
+
         # Delegate to appropriate method
         if method == 'lsb':
-            return self.lsb.embed(cover_path, secret_data, output_path)
+            lsb_bits = options.get('lsb_bits')
+            lsb_mode = options.get('lsb_mode', self.lsb.mode)
+            bits = lsb_bits if lsb_bits is not None else self.lsb.bits_per_channel
+            stego = LSBSteganography(bits_per_channel=bits, mode=lsb_mode)
+            return stego.embed(cover_path, secret_data, output_path)
         elif method == 'pvd':
             from .pvd import PVDSteganography
-            pvd = PVDSteganography()
-            return pvd.embed(cover_path, secret_data, output_path)
+            pair_skip = options.get('pair_skip')
+            pvd = PVDSteganography(pair_skip=pair_skip or 1)
+            return pvd.embed(cover_path, secret_data, output_path, pair_skip=pair_skip)
         elif method == 'dct':
             from .jpeg_dct import JPEGDCTSteganography
-            dct = JPEGDCTSteganography()
-            return dct.embed(cover_path, secret_data, output_path)
+            coefficients = options.get('coefficients')
+            dct = JPEGDCTSteganography(coefficients=coefficients)
+            return dct.embed(
+                cover_path,
+                secret_data,
+                output_path,
+                coefficients=coefficients,
+            )
         else:
             raise ValueError(f"Unknown method: {method}")
     
