@@ -26,6 +26,7 @@ from PyQt5.QtWidgets import (
 )
 
 from .common_widgets import InfoPanel, MethodCard
+from utils.payloads import create_file_payload, create_text_payload
 
 
 class EmbedTab(QWidget):
@@ -310,17 +311,21 @@ class EmbedTab(QWidget):
             QMessageBox.warning(self, "คำเตือน", "กรุณาเลือกไฟล์ต้นฉบับ")
             return
 
-        if self.secret_stack.currentIndex() == 0:
+        secret_payload: Optional[bytes] = None
+        secret_mode = self.secret_stack.currentIndex()
+        secret_text: Optional[str] = None
+        if secret_mode == 0:
             if not self.secret_path:
                 QMessageBox.warning(self, "คำเตือน", "กรุณาเลือกไฟล์ข้อมูลลับ")
                 return
-            secret_data = self.secret_path.read_bytes()
+            raw_bytes = self.secret_path.read_bytes()
         else:
             text = self.secret_text_edit.toPlainText()
             if not text.strip():
                 QMessageBox.warning(self, "คำเตือน", "กรุณากรอกข้อความที่ต้องการซ่อน")
                 return
-            secret_data = text.encode("utf-8")
+            secret_text = text
+            raw_bytes = text.encode("utf-8")
 
         password: Optional[str] = None
         if self.use_encryption_cb.isChecked():
@@ -334,7 +339,23 @@ class EmbedTab(QWidget):
                 return
             password = pwd
 
-        self._current_secret_data = secret_data
+        if secret_mode == 0 and self.secret_path:
+            secret_payload = create_file_payload(
+                raw_bytes,
+                name=self.secret_path.name,
+                encrypted=bool(password),
+            )
+        elif secret_text is not None:
+            secret_payload = create_text_payload(
+                secret_text,
+                encrypted=bool(password),
+            )
+
+        if not secret_payload:
+            QMessageBox.warning(self, "คำเตือน", "ไม่พบข้อมูลที่จะซ่อน")
+            return
+
+        self._current_secret_data = secret_payload
         self._current_embed_params = {
             "cover_path": str(self.cover_path),
             "password": password,

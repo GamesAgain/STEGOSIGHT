@@ -4,7 +4,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from PyQt5.QtCore import QThread, Qt, pyqtSignal
 from PyQt5.QtWidgets import (
@@ -187,30 +187,86 @@ class WorkerThread(QThread):
             }
 
     def _extract(self) -> Dict[str, Any]:
+        from utils.payloads import is_payload_blob
+
         try:
             from steganography.adaptive import AdaptiveSteganography
             from cryptography_module.encryption import decrypt_data
 
-            stego_path = self.params["stego_path"]
-            password = self.params.get("password")
-            method = self.params.get("method", "adaptive")
+            stego_path = Path(self.params["stego_path"])
+            password = self.params.get("password") or None
+            requested_method = str(self.params.get("method", "adaptive")).lower()
+            expects_encrypted = bool(self.params.get("expects_encrypted", False))
 
-            self._step(25, "กำลังโหลดไฟล์…")
-            self._step(60, "กำลังดึงข้อมูล…")
-            stego = AdaptiveSteganography()
-            data = stego.extract(stego_path, method)
-            if password:
-                self._step(85, "กำลังถอดรหัสข้อมูล…")
-                data = decrypt_data(data, password)
-            self._step(100, "เสร็จสิ้น")
-            return {"data": data, "method": method}
-        except Exception as exc:  # pragma: no cover - simulated pipeline
-            logger.info("Extraction pipeline not available, using simulator: %s", exc)
-            self._step(30, "กำลังโหลดไฟล์…")
-            self._step(65, "กำลังดึงข้อมูล…")
-            data = b"This is demo extracted data from simulator."
-            self._step(100, "เสร็จสิ้น")
-            return {"data": data, "method": self.params.get("method", "adaptive")}
+            self._step(20, "กำลังโหลดไฟล์…")
+
+            adaptive_mode = requested_method in {"adaptive", "auto"}
+            methods_to_try: List[str]
+            if adaptive_mode:
+                methods_to_try = []
+                detector = AdaptiveSteganography()
+                try:
+                    detected = detector._detect_embedding_method(stego_path)
+                    if detected:
+                        methods_to_try.append(detected)
+                except Exception as detect_exc:  # pragma: no cover - best effort hint
+                    logger.debug("Auto-detect failed: %s", detect_exc)
+                for candidate in ("lsb", "pvd", "dct"):
+                    if candidate not in methods_to_try:
+                        methods_to_try.append(candidate)
+            else:
+                methods_to_try = [requested_method]
+
+            extraction_errors: Dict[str, str] = {}
+
+            for index, method in enumerate(methods_to_try):
+                progress = min(60, 30 + index * 15)
+                self._step(progress, f"กำลังดึงข้อมูลด้วย {method.upper()}…")
+
+                try:
+                    extractor = AdaptiveSteganography()
+                    data = extractor.extract(stego_path, method)
+                    used_method = getattr(extractor, "last_method", method)
+                except Exception as exc:
+                    extraction_errors[method] = str(exc)
+                    continue
+
+                payload_detected = is_payload_blob(data)
+                encrypted = False
+
+                if password:
+                    self._step(progress + 10, "กำลังถอดรหัสข้อมูล…")
+                    try:
+                        data = decrypt_data(data, password)
+                    except Exception as exc:
+                        raise ValueError("รหัสผ่านไม่ถูกต้องหรือข้อมูลถูกทำลาย") from exc
+                    encrypted = True
+                    payload_detected = is_payload_blob(data)
+                    if not payload_detected:
+                        raise ValueError("ไม่สามารถยืนยันโครงสร้างข้อมูลหลังถอดรหัส")
+                elif expects_encrypted:
+                    raise ValueError("จำเป็นต้องกรอกรหัสผ่านเพื่อถอดข้อมูลที่เข้ารหัส")
+
+                if not payload_detected and adaptive_mode:
+                    extraction_errors[method] = "ไม่พบโครงสร้าง payload ที่รู้จัก"
+                    continue
+
+                self._step(95, "กำลังตรวจสอบผลลัพธ์…")
+                self._step(100, "เสร็จสิ้น")
+                return {
+                    "data": data,
+                    "method": used_method,
+                    "attempted_methods": methods_to_try,
+                    "payload_detected": payload_detected,
+                    "encrypted": encrypted,
+                }
+
+            detail = "; ".join(f"{k.upper()}: {v}" for k, v in extraction_errors.items())
+            if detail:
+                raise ValueError(f"ไม่พบข้อมูลที่ถูกซ่อนอยู่ ({detail})")
+            raise ValueError("ไม่พบข้อมูลที่ถูกซ่อนอยู่")
+        except Exception:
+            raise
 
     def _analyze(self) -> Dict[str, Any]:
         try:
