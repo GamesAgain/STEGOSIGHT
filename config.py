@@ -46,5 +46,6 @@ CRYPTO_SETTINGS = {
 
 # Steganalysis
 ANALYSIS_SETTINGS = {
-    "weights": {"chi_square": 0.4, "ela": 0.3, "histogram": 0.3}
+    "weights": {"chi_square": 0.4, "ela": 0.3, "histogram": 0.3},
+    "risk_thresholds": {"low": 25, "medium": 50, "high": 75}
 }

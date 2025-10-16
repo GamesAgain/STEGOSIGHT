@@ -48,3 +48,8 @@ class ELAAnalyzer:
         mean_val = stat.mean[0]  # 0..255
         score = int(max(0, min(100, (mean_val / 255.0) * 100)))
         return score
+
+
+class ErrorLevelAnalysis(ELAAnalyzer):
+    """Backward-compatible alias for the risk scoring pipeline."""
+    pass

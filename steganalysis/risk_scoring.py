@@ -17,7 +17,10 @@ class RiskScorer:
     
     def __init__(self):
         """Initialize risk scorer"""
-        self.thresholds = ANALYSIS_SETTINGS['risk_thresholds']
+        settings = ANALYSIS_SETTINGS or {}
+        default_thresholds = {'low': 25, 'medium': 50, 'high': 75}
+        self.thresholds = settings.get('risk_thresholds', default_thresholds)
+        self.weights = settings.get('weights', {'chi_square': 0.4, 'ela': 0.3, 'histogram': 0.3})
         logger.debug("RiskScorer initialized")
     
     @log_operation("Calculate Risk Score")
@@ -63,17 +66,11 @@ class RiskScorer:
                 scores['ela'] = 0
         
         # Calculate weighted average
-        weights = {
-            'chi_square': 0.4,
-            'histogram': 0.3,
-            'ela': 0.3
-        }
-        
         total_weight = 0
         weighted_score = 0
-        
+
         for method, score in scores.items():
-            weight = weights.get(method, 0.2)
+            weight = self.weights.get(method, 0.2)
             weighted_score += score * weight
             total_weight += weight
         
