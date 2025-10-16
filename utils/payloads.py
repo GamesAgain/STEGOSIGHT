@@ -11,7 +11,6 @@ __all__ = [
     "create_text_payload",
     "create_file_payload",
     "unpack_payload",
-    "is_payload_blob",
 ]
 
 _MAGIC = b"STEGOSIGHT"
@@ -108,9 +107,3 @@ def unpack_payload(blob: bytes) -> Dict[str, Any]:
             "encrypted": False,
         }
         return {"kind": "binary", "metadata": metadata, "data": blob, "text": None}
-
-
-def is_payload_blob(blob: bytes) -> bool:
-    """Return ``True`` if ``blob`` uses the STEGOSIGHT payload container."""
-
-    return len(blob) >= _HEADER_LEN and blob.startswith(_MAGIC)

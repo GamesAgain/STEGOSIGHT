@@ -213,8 +213,6 @@ class ExtractTab(QWidget):
         for key in ("วิธีการตรวจพบ", "ขนาดข้อมูล", "สถานะการเข้ารหัส"):
             if key in self.details_labels:
                 self.details_labels[key].setText("—")
-        if getattr(self, "details_panel", None):
-            self.details_panel.setToolTip("")
         self._update_save_state()
 
     def _update_save_state(self) -> None:
@@ -306,15 +304,6 @@ class ExtractTab(QWidget):
 
         raw_data = result.get("data")
         method = result.get("method", "adaptive")
-        attempted_methods = result.get("attempted_methods")
-        payload_detected = bool(result.get("payload_detected", True))
-        decrypted_in_worker = bool(result.get("encrypted"))
-
-        if attempted_methods and getattr(self, "details_panel", None):
-            methods_str = ", ".join(str(m).upper() for m in attempted_methods)
-            self.details_panel.setToolTip(f"ลำดับวิธีที่ลองใช้: {methods_str}")
-        elif getattr(self, "details_panel", None):
-            self.details_panel.setToolTip("")
 
         if not isinstance(raw_data, (bytes, bytearray)):
             self.result_text.setPlainText("ไม่สามารถอ่านข้อมูลที่ดึงมาได้")
@@ -339,8 +328,6 @@ class ExtractTab(QWidget):
         self.extracted_payload = payload
         self.extracted_data = payload.get("data")
         metadata = payload.get("metadata", {})
-        if decrypted_in_worker:
-            metadata["encrypted"] = True
         kind = payload.get("kind", "binary")
         size = int(metadata.get("size", len(self.extracted_data) if self.extracted_data else 0))
 
@@ -363,29 +350,14 @@ class ExtractTab(QWidget):
 
         self.details_labels["วิธีการตรวจพบ"].setText(str(method).upper())
         self.details_labels["ขนาดข้อมูล"].setText(self._format_size(size))
-
         encrypted_flag = metadata.get("encrypted")
-        if not payload_detected and not decrypted_in_worker:
-            status_text = "ไม่สามารถยืนยันรูปแบบข้อมูล"
-        elif encrypted_flag:
+        if encrypted_flag:
             status_text = "ถอดรหัสแล้ว"
         elif encrypted_flag is False:
             status_text = "ไม่มีการเข้ารหัส"
         else:
             status_text = "ไม่ทราบ"
         self.details_labels["สถานะการเข้ารหัส"].setText(status_text)
-
-        if not payload_detected and not decrypted_in_worker:
-            QMessageBox.information(
-                self,
-                "คำแนะนำ",
-                "ข้อมูลที่พบไม่ใช่รูปแบบ payload มาตรฐานของ STEGOSIGHT\n"
-                "อาจเป็นไฟล์เวอร์ชันเก่าหรือข้อมูลดิบที่ถูกฝังไว้.",
-            )
-            if self.result_stack.currentIndex() == 1:
-                self.file_hint_label.setText(
-                    "ไม่สามารถยืนยันชนิดไฟล์ได้ - บันทึกเพื่อวิเคราะห์เพิ่มเติม"
-                )
 
         self._update_save_state()
         QMessageBox.information(self, "สำเร็จ", "ดึงข้อมูลสำเร็จ!")
