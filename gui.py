@@ -186,6 +186,18 @@ class WorkerThread(QThread):
                 "temporary": True,
             }
 
+    @staticmethod
+    def _should_hint_encryption(
+        data: Optional[bytes], payload_detected: bool, expects_encrypted: bool
+    ) -> bool:
+        """Return ``True`` when recovered bytes may be an encrypted payload."""
+
+        if expects_encrypted or payload_detected:
+            return False
+        if not isinstance(data, (bytes, bytearray, memoryview)):
+            return False
+        return len(data) >= 16
+
     def _extract(self) -> Dict[str, Any]:
         from utils.payloads import is_payload_blob
 
@@ -218,6 +230,7 @@ class WorkerThread(QThread):
                 methods_to_try = [requested_method]
 
             extraction_errors: Dict[str, str] = {}
+            maybe_encrypted_hint = False
 
             for index, method in enumerate(methods_to_try):
                 progress = min(60, 30 + index * 15)
@@ -233,6 +246,9 @@ class WorkerThread(QThread):
 
                 payload_detected = is_payload_blob(data)
                 encrypted = False
+
+                if self._should_hint_encryption(data, payload_detected, expects_encrypted):
+                    maybe_encrypted_hint = True
 
                 if password:
                     self._step(progress + 10, "กำลังถอดรหัสข้อมูล…")
@@ -262,6 +278,11 @@ class WorkerThread(QThread):
                 }
 
             detail = "; ".join(f"{k.upper()}: {v}" for k, v in extraction_errors.items())
+            if maybe_encrypted_hint and not expects_encrypted:
+                raise ValueError(
+                    "ไม่พบข้อมูลที่ถูกซ่อนอยู่ แต่ตรวจพบรูปแบบที่อาจถูกเข้ารหัส\n"
+                    "กรุณาเลือกตัวเลือก \"ข้อมูลถูกเข้ารหัส\" และใส่รหัสผ่าน จากนั้นลองอีกครั้ง"
+                )
             if detail:
                 raise ValueError(f"ไม่พบข้อมูลที่ถูกซ่อนอยู่ ({detail})")
             raise ValueError("ไม่พบข้อมูลที่ถูกซ่อนอยู่")
