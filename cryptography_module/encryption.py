@@ -1,13 +1,17 @@
-"""Encryption Module (AES-256-GCM + Argon2id KDF)
-ปลอดภัยตามมาตรฐาน AEAD; รองรับ PBKDF2 fallback หากไม่มี argon2-cffi
-"""
+"""Encryption helpers for STEGOSIGHT."""
+
+from __future__ import annotations
+
 import os
-from typing import Tuple, Dict, Any
+from typing import Iterable
+
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from utils.logger import setup_logger, log_operation
-try:
+
+from utils.logger import log_operation, setup_logger
+
+try:  # pragma: no cover - configuration may be absent in tests
     from config import CRYPTO_SETTINGS
-except Exception:
+except Exception:  # pragma: no cover - fallback for standalone tests
     CRYPTO_SETTINGS = {"salt_bytes": 16}
 
 from .key_derivation import derive_key
@@ -26,7 +30,7 @@ class CryptoManager:
 
         try:
             key, salt, meta = derive_key(password)
-            nonce = os.urandom(12)  # 96-bit nonce
+            nonce = os.urandom(12)  # 96-bit nonce recommended for GCM
             aesgcm = AESGCM(key)
             ct = aesgcm.encrypt(nonce, plaintext, None)
             blob = salt + nonce + ct
@@ -34,8 +38,8 @@ class CryptoManager:
                 logger, "Encrypt", status="SUCCESS", details=f"kdf={meta.get('kdf')}"
             )
             return blob
-        except Exception as e:
-            log_operation(logger, "Encrypt", status="FAILED", details=str(e))
+        except Exception as exc:  # pragma: no cover - defensive logging
+            log_operation(logger, "Encrypt", status="FAILED", details=str(exc))
             raise
 
     def decrypt(self, blob: bytes, password: str) -> bytes:

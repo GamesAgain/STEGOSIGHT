@@ -15,7 +15,7 @@ logger = setup_logger(__name__)
 class LSBSteganography:
     """LSB Matching Steganography Implementation"""
     
-    def __init__(self, bits_per_channel=1, mode='adaptive'):
+    def __init__(self, bits_per_channel=1, mode='sequential'):
         """
         Initialize LSB steganography
         
@@ -74,12 +74,7 @@ class LSBSteganography:
         stego_pixels = pixels.copy()
         
         # Generate embedding sequence
-        if self.mode == 'random':
-            positions = self._generate_random_positions(height, width, channels, len(binary_data))
-        elif self.mode == 'adaptive':
-            positions = self._generate_adaptive_positions(pixels, len(binary_data))
-        else:  # sequential
-            positions = self._generate_sequential_positions(height, width, channels, len(binary_data))
+        positions = self._generate_positions(pixels, len(binary_data))
         
         # Embed data
         for pos in positions:
@@ -136,7 +131,7 @@ class LSBSteganography:
         
         # Generate extraction sequence (must match embedding)
         # First, extract length (4 bytes = 32 bits)
-        length_positions = self._generate_sequential_positions(height, width, channels, 32)
+        length_positions = self._generate_positions(pixels, 32)
         
         length_bits = ''
         for pos in length_positions:
@@ -153,12 +148,7 @@ class LSBSteganography:
         
         # Generate positions for actual data
         total_bits = 32 + (data_length * 8)
-        if self.mode == 'random':
-            positions = self._generate_random_positions(height, width, channels, total_bits)
-        elif self.mode == 'adaptive':
-            positions = self._generate_adaptive_positions(pixels, total_bits)
-        else:
-            positions = self._generate_sequential_positions(height, width, channels, total_bits)
+        positions = self._generate_positions(pixels, total_bits)
         
         # Extract data bits (skip first 32 bits which is length)
         binary_data = ''
@@ -182,6 +172,14 @@ class LSBSteganography:
         logger.info(f"Extracted {len(secret_data)} bytes")
         return bytes(secret_data)
     
+    def _generate_positions(self, pixels, num_bits):
+        height, width, channels = pixels.shape
+        if self.mode == 'random':
+            return self._generate_random_positions(height, width, channels, num_bits)
+        if self.mode == 'adaptive':
+            return self._generate_adaptive_positions(pixels, num_bits)
+        return self._generate_sequential_positions(height, width, channels, num_bits)
+
     def _generate_sequential_positions(self, height, width, channels, num_bits):
         """สร้างลำดับตำแหน่งแบบเรียงตามลำดับ"""
         positions = []
