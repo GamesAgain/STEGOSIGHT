@@ -107,6 +107,7 @@ class ExtractTab(QWidget):
             "LSB Matching",
             "PVD",
             "DCT (JPEG)",
+            "Tail Append (ต่อท้ายไฟล์)",
         ])
         layout.addWidget(self.method_combo)
 
@@ -273,7 +274,7 @@ class ExtractTab(QWidget):
                 QMessageBox.warning(self, "คำเตือน", "กรุณากรอกรหัสผ่าน")
                 return
 
-        method_map = {0: "adaptive", 1: "lsb", 2: "pvd", 3: "dct"}
+        method_map = {0: "adaptive", 1: "lsb", 2: "pvd", 3: "dct", 4: "append"}
         method = method_map.get(self.method_combo.currentIndex(), "adaptive")
 
         params = {

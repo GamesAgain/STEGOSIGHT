@@ -107,13 +107,13 @@ class WorkerThread(QThread):
     # ---------------- actual ops with graceful fallbacks ----------------
     def _embed(self) -> Dict[str, Any]:
         try:
-            from steganography.adaptive import AdaptiveSteganography
             from cryptography_module.encryption import encrypt_data
+            from steganography.appender import append_payload_to_file
 
             cover_path = Path(self.params["cover_path"])
             data = self.params["secret_data"]
             password = self.params.get("password")
-            method = self.params.get("method", "adaptive")
+            method = str(self.params.get("method", "adaptive"))
             options = self.params.get("options")
 
             temp_dir = Path(self.params.get("temp_dir") or tempfile.gettempdir())
@@ -128,15 +128,25 @@ class WorkerThread(QThread):
                 data = encrypt_data(data, password)
 
             self._step(55, "กำลังซ่อนข้อมูล…")
-            stego = AdaptiveSteganography()
-            stego_path = stego.embed(
-                cover_path,
-                data,
-                method,
-                output_path=output_path,
-                options=options,
-            )
-            actual_method = getattr(stego, "last_method", method)
+            if method == "append":
+                stego_path = append_payload_to_file(
+                    cover_path,
+                    data,
+                    output_path=output_path,
+                )
+                actual_method = "append"
+            else:
+                from steganography.adaptive import AdaptiveSteganography
+
+                stego = AdaptiveSteganography()
+                stego_path = stego.embed(
+                    cover_path,
+                    data,
+                    method,
+                    output_path=output_path,
+                    options=options,
+                )
+                actual_method = getattr(stego, "last_method", method)
 
             risk_score = None
             self._step(80, "กำลังวิเคราะห์ความเสี่ยง…")
@@ -166,12 +176,23 @@ class WorkerThread(QThread):
             self._step(40, "กำลังเข้ารหัสข้อมูล…")
             self._step(70, "กำลังซ่อนข้อมูล…")
             cover_path = Path(self.params["cover_path"])
+            secret_data = self.params.get("secret_data", b"")
+            method = str(self.params.get("method", "adaptive"))
             suffix = cover_path.suffix or ".stego"
             fd, temp_name = tempfile.mkstemp(prefix="stego_", suffix=suffix)
             os.close(fd)
             out_path = Path(temp_name)
             try:
-                out_path.write_bytes(cover_path.read_bytes())
+                if method == "append":
+                    from steganography.appender import append_payload_to_file
+
+                    append_payload_to_file(
+                        cover_path,
+                        secret_data,
+                        output_path=out_path,
+                    )
+                else:
+                    out_path.write_bytes(cover_path.read_bytes())
             except Exception:
                 out_path.write_bytes(b"STEGOSIGHT SIMULATED STEGO FILE")
             self._step(95, "กำลังวิเคราะห์ความเสี่ยง…")
@@ -180,7 +201,7 @@ class WorkerThread(QThread):
                 "risk_score": {"score": 42, "level": "MEDIUM"}
                 if self.params.get("auto_analyze", True)
                 else None,
-                "method": self.params.get("method", "adaptive"),
+                "method": method,
                 "options": self.params.get("options"),
                 "recommendation": None,
                 "temporary": True,
@@ -202,8 +223,20 @@ class WorkerThread(QThread):
         from utils.payloads import is_payload_blob
 
         try:
-            from steganography.adaptive import AdaptiveSteganography
             from cryptography_module.encryption import decrypt_data
+            from steganography.appender import (
+                extract_appended_payload,
+                has_appended_payload,
+            )
+
+            AdaptiveSteganographyCls: Optional[type] = None
+            adaptive_import_error: Optional[Exception] = None
+            try:
+                from steganography.adaptive import AdaptiveSteganography as _AdaptiveSteganography
+
+                AdaptiveSteganographyCls = _AdaptiveSteganography
+            except Exception as exc:  # pragma: no cover - optional dependency
+                adaptive_import_error = exc
 
             stego_path = Path(self.params["stego_path"])
             password = self.params.get("password") or None
@@ -213,21 +246,34 @@ class WorkerThread(QThread):
             self._step(20, "กำลังโหลดไฟล์…")
 
             adaptive_mode = requested_method in {"adaptive", "auto"}
-            methods_to_try: List[str]
-            if adaptive_mode:
-                methods_to_try = []
-                detector = AdaptiveSteganography()
-                try:
-                    detected = detector._detect_embedding_method(stego_path)
-                    if detected:
-                        methods_to_try.append(detected)
-                except Exception as detect_exc:  # pragma: no cover - best effort hint
-                    logger.debug("Auto-detect failed: %s", detect_exc)
-                for candidate in ("lsb", "pvd", "dct"):
-                    if candidate not in methods_to_try:
-                        methods_to_try.append(candidate)
+            methods_to_try: List[str] = []
+            if requested_method == "append":
+                methods_to_try = ["append"]
+            elif adaptive_mode:
+                if has_appended_payload(stego_path):
+                    methods_to_try.append("append")
+                if AdaptiveSteganographyCls is None:
+                    if not methods_to_try:
+                        raise adaptive_import_error or RuntimeError(
+                            "ไม่สามารถโหลดโมดูล AdaptiveSteganography"
+                        )
+                else:
+                    detector = AdaptiveSteganographyCls()
+                    try:
+                        detected = detector._detect_embedding_method(stego_path)
+                        if detected:
+                            methods_to_try.append(detected)
+                    except Exception as detect_exc:  # pragma: no cover - best effort hint
+                        logger.debug("Auto-detect failed: %s", detect_exc)
+                    for candidate in ("lsb", "pvd", "dct"):
+                        if candidate not in methods_to_try:
+                            methods_to_try.append(candidate)
             else:
                 methods_to_try = [requested_method]
+                if requested_method != "append" and AdaptiveSteganographyCls is None:
+                    raise adaptive_import_error or RuntimeError(
+                        "ไม่สามารถโหลดโมดูล AdaptiveSteganography"
+                    )
 
             extraction_errors: Dict[str, str] = {}
             maybe_encrypted_hint = False
@@ -237,9 +283,15 @@ class WorkerThread(QThread):
                 self._step(progress, f"กำลังดึงข้อมูลด้วย {method.upper()}…")
 
                 try:
-                    extractor = AdaptiveSteganography()
-                    data = extractor.extract(stego_path, method)
-                    used_method = getattr(extractor, "last_method", method)
+                    if method == "append":
+                        data = extract_appended_payload(stego_path)
+                        used_method = "append"
+                    else:
+                        if AdaptiveSteganographyCls is None:
+                            raise RuntimeError("AdaptiveSteganography backend is unavailable")
+                        extractor = AdaptiveSteganographyCls()
+                        data = extractor.extract(stego_path, method)
+                        used_method = getattr(extractor, "last_method", method)
                 except Exception as exc:
                     extraction_errors[method] = str(exc)
                     continue
