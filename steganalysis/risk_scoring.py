@@ -4,7 +4,7 @@ Risk Scoring Engine
 """
 
 from pathlib import Path
-from typing import Dict, Iterable, Tuple
+from typing import Dict, Iterable, List, Tuple
 
 from config import ANALYSIS_SETTINGS
 from utils.logger import setup_logger, log_operation
@@ -71,14 +71,34 @@ class RiskScorer:
         method_list = self._normalize_methods(methods, file_path)
         scores, errors = self._run_methods(file_path, method_list)
         summary = self._summarize(scores)
+        insights = self._generate_insights(scores, summary)
+        suspected_method = self._infer_embedding_method(scores)
+        confidence = self._confidence_from_scores(scores, summary["score"])
+        suspicious = summary["score"] >= self.thresholds.get("medium", 60)
+        log_message = self._build_summary_log(
+            file_path,
+            summary,
+            scores,
+            insights,
+            suspected_method,
+            confidence,
+            errors,
+        )
+
         result = {
             "score": summary["score"],
             "level": summary["level"],
             "details": scores,
             "recommendation": summary["recommendation"],
+            "insights": insights,
+            "suspected_method": suspected_method,
+            "suspicious": suspicious,
+            "confidence": round(confidence, 2),
+            "log": log_message,
         }
         if errors:
             result["errors"] = errors
+        logger.info(log_message)
         return result
 
     def compare_before_after(self, original_path, stego_path):
@@ -200,6 +220,117 @@ class RiskScorer:
             "level": level,
             "recommendation": recommendation,
         }
+
+    def _generate_insights(self, scores: Dict[str, float], summary: Dict[str, object]) -> List[str]:
+        if not scores:
+            return ["ไม่พบคะแนนจากวิธีวิเคราะห์ใด ๆ"]
+
+        insights: List[str] = []
+        thresholds = {
+            "high": 70,
+            "medium": 40,
+        }
+
+        def add_message(method_key: str, title: str, high_msg: str, medium_msg: str) -> None:
+            score = scores.get(method_key, 0)
+            if score >= thresholds["high"]:
+                insights.append(f"{title}: {high_msg} (คะแนน {score}/100)")
+            elif score >= thresholds["medium"]:
+                insights.append(f"{title}: {medium_msg} (คะแนน {score}/100)")
+
+        add_message(
+            "chi_square",
+            "Chi-Square",
+            "รูปแบบบิต LSB เปลี่ยนแปลงผิดปกติ คล้ายการฝังข้อมูลแบบ LSB",
+            "มีความเบี่ยงเบนของบิต LSB มากกว่าปกติ",
+        )
+        add_message(
+            "histogram",
+            "Histogram",
+            "การกระจายสีผิดปกติ เสมือนมีการปรับแก้พิกเซลเพื่อซ่อนข้อมูล",
+            "ฮิสโตแกรมมีลักษณะไม่สมดุล อาจเกิดจากการฝังข้อมูล",
+        )
+        add_message(
+            "ela",
+            "ELA",
+            "มีบริเวณที่มีค่าข้อผิดพลาดสูง สอดคล้องกับการแก้ไขหรือแปะข้อมูลลงในภาพ",
+            "พบการเปลี่ยนแปลงหลังบีบอัดซ้ำมากกว่าปกติ",
+        )
+        add_message(
+            "ml",
+            "ML Detector",
+            "ตัวตรวจจับเชิงประสบการณ์พบสัญญาณคล้ายการฝังข้อมูลแบบปรับตัว",
+            "คุณลักษณะของภาพใกล้เคียงกับภาพที่มีการซ่อนข้อมูล",
+        )
+
+        if not insights:
+            score = summary.get("score", 0)
+            level = summary.get("level", "LOW")
+            insights.append(
+                f"คะแนนรวม {score}/100 ({level}) - ยังไม่พบร่องรอยที่โดดเด่น"
+            )
+
+        return insights
+
+    def _infer_embedding_method(self, scores: Dict[str, float]) -> str:
+        if not scores:
+            return "ไม่พบวิธีการซ่อนที่ชัดเจน"
+
+        best_method, best_score = max(scores.items(), key=lambda item: item[1])
+        if best_score < 35:
+            return "ไม่พบวิธีการซ่อนที่ชัดเจน"
+
+        mapping = {
+            "chi_square": "การซ่อนแบบ LSB (ปรับแต่งบิตต่ำ)",
+            "histogram": "การปรับแต่งการกระจายสี/พาเลต",
+            "ela": "การแก้ไขเฉพาะส่วนหรือฝังข้อมูลใน JPEG",
+            "ml": "เทคนิคขั้นสูง เช่น Adaptive/Transform Domain",
+        }
+        return mapping.get(best_method, "รูปแบบการซ่อนที่ไม่รู้จัก")
+
+    def _confidence_from_scores(self, scores: Dict[str, float], final_score: float) -> float:
+        if not scores:
+            return 0.0
+
+        strong = sum(1 for value in scores.values() if value >= 70)
+        moderate = sum(1 for value in scores.values() if 40 <= value < 70)
+        base = final_score * 0.5
+        confidence = base + (strong * 20) + (moderate * 8)
+        if final_score < self.thresholds.get("low", 30):
+            confidence = min(confidence, 35)
+        return max(0.0, min(100.0, confidence))
+
+    def _build_summary_log(
+        self,
+        file_path: Path,
+        summary: Dict[str, object],
+        scores: Dict[str, float],
+        insights: List[str],
+        suspected_method: str,
+        confidence: float,
+        errors: Dict[str, str],
+    ) -> str:
+        lines = [
+            f"[ANALYZE] File: {file_path}",
+            f"Score: {summary.get('score', 0)}/100 ({summary.get('level', 'LOW')})",
+            f"Suspected method: {suspected_method}",
+            f"Confidence: {confidence:.1f}%",
+            f"Recommendation: {summary.get('recommendation', '-')}",
+            "Details:",
+        ]
+
+        for method, value in scores.items():
+            lines.append(f"  - {method.replace('_', ' ').title()}: {value}/100")
+
+        if insights:
+            lines.append("Insights:")
+            lines.extend(f"  * {msg}" for msg in insights)
+
+        if errors:
+            lines.append("Errors:")
+            lines.extend(f"  ! {method}: {message}" for method, message in errors.items())
+
+        return "\n".join(lines)
 
     def _determine_level(self, score):
         if score < self.thresholds["low"]:
