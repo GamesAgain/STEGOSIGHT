@@ -22,6 +22,7 @@ from PyQt5.QtWidgets import (
 )
 
 from .common_widgets import InfoPanel, RiskScoreWidget
+from utils.logger import setup_logger
 
 
 class AnalyzeTab(QWidget):
@@ -32,6 +33,7 @@ class AnalyzeTab(QWidget):
         self.parent_window = parent
         self.file_path: Optional[Path] = None
         self._init_ui()
+        self.logger = setup_logger(__name__)
 
     def _init_ui(self) -> None:
         main_layout = QVBoxLayout(self)
@@ -74,7 +76,14 @@ class AnalyzeTab(QWidget):
         results_layout.addWidget(self.risk_score_widget)
 
         details_panel, labels = self._create_info_panel(
-            ["📊 Chi-Square Test", "🔍 ELA Analysis", "📈 Histogram", "🎯 ความมั่นใจ"]
+            [
+                "📊 Chi-Square Test",
+                "🔍 ELA Analysis",
+                "📈 Histogram",
+                "🤖 ML Detector",
+                "🎯 ความมั่นใจ",
+                "🕵️ ผลการคาดการณ์",
+            ]
         )
         self.details_panel = details_panel
         self.details_labels = labels
@@ -197,6 +206,7 @@ class AnalyzeTab(QWidget):
         }
 
         self._set_busy(True)
+        self.logger.info("Starting analysis for %s with methods %s", self.file_path, methods)
         self.parent_window.start_worker(
             "analyze",
             params,
@@ -206,9 +216,20 @@ class AnalyzeTab(QWidget):
         )
 
     def _on_analysis_result(self, result: Dict[str, object]) -> None:
-        score = int(result.get("score", 42))
-        level = str(result.get("level", "MEDIUM"))
         details = result.get("details", {}) if isinstance(result, dict) else {}
+
+        raw_score = result.get("score", 0)
+        try:
+            score_value = float(raw_score)
+        except (TypeError, ValueError):
+            score_value = 0.0
+        score = int(round(score_value))
+
+        level = str(result.get("level", "UNKNOWN")).upper()
+        confidence = result.get("confidence")
+        suspected_method = str(result.get("suspected_method", "—"))
+        suspicious = bool(result.get("suspicious", False))
+        insights = result.get("insights", []) if isinstance(result, dict) else []
 
         color = "#4CAF50"
         if score >= 60:
@@ -216,33 +237,75 @@ class AnalyzeTab(QWidget):
         elif score >= 30:
             color = "#FF9800"
 
-        description = ""
+        description_lines: List[str] = []
+        if suspicious:
+            description_lines.append("พบความผิดปกติที่อาจเป็นการซ่อนข้อมูล")
+        else:
+            description_lines.append("ไม่พบหลักฐานชัดเจนของการซ่อนข้อมูล")
+        if suspected_method and suspected_method not in {"—", ""}:
+            description_lines.append(f"คาดว่าใช้: {suspected_method}")
+        if isinstance(confidence, (int, float)):
+            description_lines.append(f"ความมั่นใจ ~ {confidence:.0f}%")
+        description = "\n".join(description_lines)
+
         if isinstance(details, dict):
-            chi = details.get("chi_square", "—")
-            ela = details.get("ela", "—")
-            hist = details.get("histogram", "—")
-            description = f"Chi-Square: {chi}\nELA: {ela}\nHistogram: {hist}"
-            self.details_labels["📊 Chi-Square Test"].setText(str(chi))
-            self.details_labels["🔍 ELA Analysis"].setText(str(ela))
-            self.details_labels["📈 Histogram"].setText(str(hist))
-            confidence = details.get("confidence", "—")
-            self.details_labels["🎯 ความมั่นใจ"].setText(str(confidence))
+            self.details_labels["📊 Chi-Square Test"].setText(str(details.get("chi_square", "—")))
+            self.details_labels["🔍 ELA Analysis"].setText(str(details.get("ela", "—")))
+            self.details_labels["📈 Histogram"].setText(str(details.get("histogram", "—")))
+            self.details_labels["🤖 ML Detector"].setText(str(details.get("ml", "—")))
         else:
-            for key in self.details_labels:
-                self.details_labels[key].setText("—")
+            for label in ["📊 Chi-Square Test", "🔍 ELA Analysis", "📈 Histogram", "🤖 ML Detector"]:
+                self.details_labels[label].setText("—")
 
-        self.risk_score_widget.set_score(score, level.upper(), description, color)
-
-        if score >= 60:
-            advice = "<b>คำแนะนำ:</b> พบความเสี่ยงสูง แนะนำให้ใช้ฟังก์ชัน Neutralize"
-        elif score >= 30:
-            advice = "<b>คำแนะนำ:</b> พบความเสี่ยงปานกลาง ควรตรวจสอบเพิ่มเติม"
+        if isinstance(confidence, (int, float)):
+            self.details_labels["🎯 ความมั่นใจ"].setText(f"{confidence:.0f}%")
         else:
-            advice = "<b>คำแนะนำ:</b> ความเสี่ยงต่ำ แต่ควรเก็บไฟล์อย่างระมัดระวัง"
-        self.recommendation_box.setText(advice)
+            self.details_labels["🎯 ความมั่นใจ"].setText("—")
+        self.details_labels["🕵️ ผลการคาดการณ์"].setText(suspected_method or "—")
+
+        self.risk_score_widget.set_score(score, level, description, color)
+
+        recommendation_text = str(result.get("recommendation", ""))
+        if not recommendation_text:
+            if suspicious:
+                recommendation_text = "ควรตรวจสอบไฟล์เพิ่มเติมหรือทำให้เป็นกลางก่อนเผยแพร่"
+            else:
+                recommendation_text = "ยังไม่พบความเสี่ยงเด่นชัด สามารถเก็บไฟล์ไว้ตรวจสอบต่อได้"
+
+        html_parts = [f"<b>คำแนะนำ:</b> {recommendation_text}"]
+        if insights:
+            insight_items = "".join(f"<li>{insight}</li>" for insight in insights)
+            html_parts.append(f"<u>รายละเอียดสำคัญ:</u><ul>{insight_items}</ul>")
+
+        errors = result.get("errors")
+        if isinstance(errors, dict) and errors:
+            error_items = "".join(
+                f"<li>{method}: {message}</li>" for method, message in errors.items()
+            )
+            html_parts.append(
+                f"<span style='color:#d32f2f'><b>คำเตือน:</b> บางวิธีล้มเหลว</span><ul>{error_items}</ul>"
+            )
+
+        log_message = result.get("log")
+        if isinstance(log_message, str) and log_message.strip():
+            preview = "<br>".join(log_message.strip().splitlines()[:3])
+            html_parts.append(
+                f"<span style='color:#555'>บันทึกการวิเคราะห์:<br>{preview}</span>"
+            )
+
+        self.recommendation_box.setText("".join(html_parts))
+        self.logger.info(
+            "Analysis finished for %s -> score %s (%s) | suspected=%s | confidence=%s",
+            self.file_path,
+            score,
+            level,
+            suspected_method,
+            confidence,
+        )
 
     def _on_worker_error(self, error: str) -> None:
         QMessageBox.critical(self, "ข้อผิดพลาด", f"วิเคราะห์ล้มเหลว:\n{error}")
+        self.logger.error("Analysis failed for %s: %s", self.file_path, error)
         self._set_busy(False)
 
     def _on_worker_finished(self) -> None:
@@ -250,3 +313,4 @@ class AnalyzeTab(QWidget):
 
     def _set_busy(self, busy: bool) -> None:
         self.action_btn.setEnabled(not busy)
+        self.action_btn.setText("⏳ กำลังวิเคราะห์..." if busy else "🔍 วิเคราะห์ไฟล์")
