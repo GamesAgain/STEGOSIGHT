@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -37,6 +38,11 @@ class EmbedTab(QWidget):
         self.cover_path: Optional[Path] = None
         self.secret_path: Optional[Path] = None
         self.selected_method = "adaptive"
+        self._current_secret_data: Optional[bytes] = None
+        self._current_embed_params: Dict[str, object] = {}
+        self._current_temp_path: Optional[Path] = None
+        self._last_risk: Optional[Dict[str, object]] = None
+        self._last_result: Optional[Dict[str, object]] = None
 
         self._init_ui()
 
@@ -328,14 +334,26 @@ class EmbedTab(QWidget):
                 return
             password = pwd
 
-        params = {
+        self._current_secret_data = secret_data
+        self._current_embed_params = {
             "cover_path": str(self.cover_path),
-            "secret_data": secret_data,
             "password": password,
             "method": self.selected_method,
-            "auto_analyze": self.auto_analyze_cb.isChecked(),
+            "options": {},
+            "auto_analyze": True,
             "auto_neutralize": self.auto_neutralize_cb.isChecked(),
         }
+
+        self._cleanup_temp_file()
+        self._run_embed_worker()
+
+    def _run_embed_worker(self) -> None:
+        if not self._current_secret_data or not self._current_embed_params:
+            QMessageBox.warning(self, "คำเตือน", "ไม่มีข้อมูลสำหรับการซ่อน")
+            return
+
+        params = dict(self._current_embed_params)
+        params["secret_data"] = self._current_secret_data
 
         self._set_busy(True)
         self.parent_window.start_worker(
@@ -347,14 +365,24 @@ class EmbedTab(QWidget):
         )
 
     def _on_embed_result(self, result: Dict[str, object]) -> None:
-        stego_path = result.get("stego_path", "")
-        risk = result.get("risk_score")
-        message = f"ซ่อนข้อมูลสำเร็จ!\n\nไฟล์ที่สร้าง: {stego_path}"
-        if isinstance(risk, dict):
-            score = risk.get("score", "—")
-            level = risk.get("level", "—")
-            message += f"\n\nคะแนนความเสี่ยง: {score}\nระดับ: {level}"
-        QMessageBox.information(self, "สำเร็จ", message)
+        self._last_result = result
+
+        stego_path = result.get("stego_path")
+        if not stego_path:
+            QMessageBox.warning(self, "คำเตือน", "ไม่พบไฟล์ผลลัพธ์จากการซ่อน")
+            return
+
+        temp_path = Path(stego_path)
+        self._current_temp_path = temp_path
+        risk = result.get("risk_score") if isinstance(result.get("risk_score"), dict) else None
+        self._last_risk = risk
+
+        method_used = result.get("method", self._current_embed_params.get("method", self.selected_method))
+        self._current_embed_params["method"] = method_used
+        self._current_embed_params["options"] = result.get("options") or self._current_embed_params.get("options", {})
+        self._update_method_selection(method_used)
+
+        self._show_risk_confirmation(temp_path, risk, result)
 
     def _on_worker_error(self, error: str) -> None:
         QMessageBox.critical(self, "ข้อผิดพลาด", f"เกิดข้อผิดพลาด:\n{error}")
@@ -363,5 +391,166 @@ class EmbedTab(QWidget):
     def _on_worker_finished(self) -> None:
         self._set_busy(False)
 
+    def _update_method_selection(self, method_key: str) -> None:
+        if not getattr(self, "method_cards", None):
+            return
+        for card in self.method_cards:
+            selected = self.method_card_map.get(card) == method_key
+            card.setSelected(selected)
+        self.selected_method = method_key
+
+    def _show_risk_confirmation(
+        self, temp_path: Path, risk: Optional[Dict[str, object]], result: Dict[str, object]
+    ) -> None:
+        score_text = "—"
+        level_text = "—"
+        if risk:
+            score_text = str(risk.get("score", "—"))
+            level_text = str(risk.get("level", "—"))
+
+        message = (
+            f"ซ่อนข้อมูลสำเร็จ!\n\nคะแนนความเสี่ยง: {score_text}\nระดับ: {level_text}"
+        )
+
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("ผลการประเมินความเสี่ยง")
+        dialog.setIcon(QMessageBox.Question)
+        dialog.setText(message)
+        dialog.setInformativeText("ต้องการบันทึกไฟล์นี้หรือไม่?")
+
+        save_button = dialog.addButton("บันทึก...", QMessageBox.AcceptRole)
+        improve_button = dialog.addButton("ปรับปรุงความแนบเนียน", QMessageBox.ActionRole)
+        dialog.setDefaultButton(save_button)
+        dialog.exec_()
+
+        clicked = dialog.clickedButton()
+        if clicked is save_button:
+            self._prompt_save_file(temp_path, risk)
+        elif clicked is improve_button:
+            self._improve_and_retry(risk, result)
+        else:
+            # หากปิดหน้าต่าง ให้เก็บไฟล์ชั่วคราวไว้ให้ผู้ใช้ตัดสินใจภายหลัง
+            pass
+
+    def _prompt_save_file(self, temp_path: Path, risk: Optional[Dict[str, object]]) -> None:
+        if not self.cover_path:
+            QMessageBox.warning(self, "คำเตือน", "ไม่พบไฟล์ต้นฉบับสำหรับตั้งชื่อผลลัพธ์")
+            return
+
+        default_name = f"{self.cover_path.stem}_stego{temp_path.suffix}"
+        target_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "บันทึกไฟล์ที่ซ่อนข้อมูล",
+            str(self.cover_path.parent / default_name),
+            "All Files (*.*)",
+        )
+
+        if not target_path:
+            return
+
+        try:
+            shutil.copyfile(temp_path, target_path)
+        except Exception as exc:
+            QMessageBox.critical(self, "ข้อผิดพลาด", f"ไม่สามารถบันทึกไฟล์ได้:\n{exc}")
+            return
+
+        self._cleanup_temp_file()
+
+        message = f"บันทึกไฟล์เรียบร้อยแล้วที่:\n{target_path}"
+        if risk:
+            message += (
+                f"\n\nคะแนนความเสี่ยง: {risk.get('score', '—')}"
+                f"\nระดับ: {risk.get('level', '—')}"
+            )
+        QMessageBox.information(self, "สำเร็จ", message)
+
+    def _improve_and_retry(
+        self, risk: Optional[Dict[str, object]], result: Dict[str, object]
+    ) -> None:
+        improved = self._apply_improvements(risk, result)
+        if not improved:
+            QMessageBox.information(
+                self,
+                "ข้อมูล",
+                "ไม่สามารถปรับปรุงพารามิเตอร์เพิ่มเติมได้ ลองเลือกไฟล์ต้นฉบับอื่น",
+            )
+            return
+
+        self._cleanup_temp_file()
+        self._run_embed_worker()
+
+    def _apply_improvements(
+        self, risk: Optional[Dict[str, object]], result: Dict[str, object]
+    ) -> bool:
+        if not self._current_embed_params:
+            return False
+
+        params = self._current_embed_params
+        options = dict(params.get("options") or {})
+        current_method = params.get("method", self.selected_method)
+        improved = False
+
+        recommendation = result.get("recommendation")
+        if not recommendation:
+            try:
+                from steganography.adaptive import AdaptiveSteganography
+
+                adaptive = AdaptiveSteganography()
+                recommendation = adaptive.get_recommended_settings(
+                    Path(params["cover_path"]), self._current_secret_data or b""
+                )
+            except Exception:
+                recommendation = None
+
+        if recommendation:
+            recommended_method = recommendation.get("method", current_method)
+            if recommended_method and recommended_method != current_method:
+                current_method = recommended_method
+                params["method"] = recommended_method
+                improved = True
+
+        # Method-specific refinements
+        if current_method == "lsb":
+            bits = options.get("lsb_bits", 1)
+            if bits > 1:
+                options["lsb_bits"] = 1
+                improved = True
+            mode = options.get("lsb_mode")
+            if mode != "adaptive":
+                options["lsb_mode"] = "adaptive"
+                improved = True
+        elif current_method == "pvd":
+            pair_skip = options.get("pair_skip", 1)
+            if pair_skip < 2:
+                options["pair_skip"] = 2
+                improved = True
+        elif current_method == "dct":
+            coeffs = options.get("coefficients") or []
+            if not coeffs:
+                options["coefficients"] = [(4, 3)]
+                improved = True
+            elif len(coeffs) > 1:
+                options["coefficients"] = [coeffs[0]]
+                improved = True
+
+        if not improved and current_method != "adaptive":
+            params["method"] = "adaptive"
+            params["options"] = {}
+            self._update_method_selection("adaptive")
+            return True
+
+        params["method"] = current_method
+        params["options"] = options
+        self._update_method_selection(current_method)
+        return improved
+
     def _set_busy(self, busy: bool) -> None:
         self.action_btn.setEnabled(not busy)
+
+    def _cleanup_temp_file(self) -> None:
+        if self._current_temp_path and self._current_temp_path.exists():
+            try:
+                self._current_temp_path.unlink()
+            except Exception:
+                pass
+        self._current_temp_path = None

@@ -1,6 +1,8 @@
 """STEGOSIGHT GUI application with the refreshed interface design."""
 
+import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
@@ -108,10 +110,17 @@ class WorkerThread(QThread):
             from steganography.adaptive import AdaptiveSteganography
             from cryptography_module.encryption import encrypt_data
 
-            cover_path = self.params["cover_path"]
+            cover_path = Path(self.params["cover_path"])
             data = self.params["secret_data"]
             password = self.params.get("password")
             method = self.params.get("method", "adaptive")
+            options = self.params.get("options")
+
+            temp_dir = Path(self.params.get("temp_dir") or tempfile.gettempdir())
+            suffix = cover_path.suffix or ".stego"
+            fd, temp_name = tempfile.mkstemp(prefix="stego_", suffix=suffix, dir=str(temp_dir))
+            os.close(fd)
+            output_path = Path(temp_name)
 
             self._step(10, "กำลังโหลดไฟล์…")
             if password:
@@ -120,31 +129,61 @@ class WorkerThread(QThread):
 
             self._step(55, "กำลังซ่อนข้อมูล…")
             stego = AdaptiveSteganography()
-            stego_path = stego.embed(cover_path, data, method)
+            stego_path = stego.embed(
+                cover_path,
+                data,
+                method,
+                output_path=output_path,
+                options=options,
+            )
+            actual_method = getattr(stego, "last_method", method)
 
             risk_score = None
-            if self.params.get("auto_analyze", True):
-                self._step(80, "กำลังวิเคราะห์ความเสี่ยง…")
-                from steganalysis.risk_scoring import RiskScorer
+            self._step(80, "กำลังวิเคราะห์ความเสี่ยง…")
+            from steganalysis.risk_scoring import RiskScorer
 
-                scorer = RiskScorer()
-                risk_score = scorer.calculate_risk(stego_path)
+            scorer = RiskScorer()
+            risk_score = scorer.calculate_risk(stego_path)
+
+            recommendation = None
+            try:
+                recommendation = stego.get_recommended_settings(cover_path, data)
+            except Exception:
+                recommendation = None
 
             self._step(100, "เสร็จสิ้น")
-            return {"stego_path": stego_path, "risk_score": risk_score, "method": method}
+            return {
+                "stego_path": stego_path,
+                "risk_score": risk_score,
+                "method": actual_method,
+                "options": options,
+                "recommendation": recommendation,
+                "temporary": True,
+            }
         except Exception as exc:  # pragma: no cover - simulated pipeline
             logger.info("Embedding pipeline not available, using simulator: %s", exc)
             self._step(15, "กำลังโหลดไฟล์…")
             self._step(40, "กำลังเข้ารหัสข้อมูล…")
             self._step(70, "กำลังซ่อนข้อมูล…")
-            out = str(Path(self.params["cover_path"]).with_suffix(".stego.png"))
+            cover_path = Path(self.params["cover_path"])
+            suffix = cover_path.suffix or ".stego"
+            fd, temp_name = tempfile.mkstemp(prefix="stego_", suffix=suffix)
+            os.close(fd)
+            out_path = Path(temp_name)
+            try:
+                out_path.write_bytes(cover_path.read_bytes())
+            except Exception:
+                out_path.write_bytes(b"STEGOSIGHT SIMULATED STEGO FILE")
             self._step(95, "กำลังวิเคราะห์ความเสี่ยง…")
             return {
-                "stego_path": out,
+                "stego_path": str(out_path),
                 "risk_score": {"score": 42, "level": "MEDIUM"}
                 if self.params.get("auto_analyze", True)
                 else None,
                 "method": self.params.get("method", "adaptive"),
+                "options": self.params.get("options"),
+                "recommendation": None,
+                "temporary": True,
             }
 
     def _extract(self) -> Dict[str, Any]:
