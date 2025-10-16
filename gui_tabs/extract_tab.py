@@ -279,6 +279,7 @@ class ExtractTab(QWidget):
             "stego_path": str(self.stego_path),
             "password": password,
             "method": method,
+            "expects_encrypted": self.encrypted_cb.isChecked(),
         }
 
         self._reset_results()
