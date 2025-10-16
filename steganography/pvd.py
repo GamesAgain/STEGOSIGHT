@@ -13,16 +13,24 @@ logger = setup_logger(__name__)
 
 
 class PVDSteganography:
-    """Pair-based data hiding inspired by PVD techniques.
+    """Simplified PVD steganography for RGB images.
 
-    To guarantee robust extraction across different environments the
-    implementation uses a fixed number of payload bits per pixel pair.
-    While this is a simplification compared to the original Wu-Tsai PVD
-    algorithm, it retains the concept of distributing payload across
-    neighbouring pixels to minimise distortion.
+    The implementation adapts the number of bits embedded per pixel pair
+    based on the pixel-value difference range.  This keeps the visual
+    distortion low for smooth regions while still providing capacity for
+    textured areas.  The encoder stores a 4-byte length header before the
+    payload so that extraction knows when to stop reading bits.
     """
 
-    _BITS_PER_PAIR = 4
+    #: Difference ranges and the number of payload bits per pair
+    _RANGES: Sequence[Tuple[int, int, int]] = (
+        (0, 7, 3),
+        (8, 15, 4),
+        (16, 31, 5),
+        (32, 63, 6),
+        (64, 127, 7),
+        (128, 255, 8),
+    )
 
     def __init__(self, pair_skip: int = 1) -> None:
         self.pair_skip = max(1, pair_skip)
@@ -84,7 +92,8 @@ class PVDSteganography:
 
             a_idx = pos
             b_idx = pos + 1
-            bits_per_pair = self._BITS_PER_PAIR
+            diff = abs(int(flat[a_idx]) - int(flat[b_idx]))
+            lower, _, bits_per_pair = self._range_for_difference(diff)
 
             chunk = bit_stream[bit_index : bit_index + bits_per_pair]
             if not chunk:
@@ -94,19 +103,19 @@ class PVDSteganography:
             bit_index += len(chunk)
 
             first_len = (bits_per_pair + 1) // 2
-            second_len = bits_per_pair - first_len
+            second_len = bits_per_pair // 2
 
-            if first_len:
-                mask = (1 << first_len) - 1
-                value = int(chunk[:first_len], 2)
-                pixel_a = (int(flat[a_idx]) & ~mask) | value
-            if second_len:
-                mask = (1 << second_len) - 1
-                value = int(chunk[first_len:], 2)
-                pixel_b = (int(flat[b_idx]) & ~mask) | value
+            flat[a_idx] = self._write_bits(flat[a_idx], chunk[:first_len])
+            flat[b_idx] = self._write_bits(flat[b_idx], chunk[first_len:])
 
-            flat[a_idx] = np.uint8(pixel_a)
-            flat[b_idx] = np.uint8(pixel_b)
+            # Re-adjust difference to stay within the range lower bound.
+            new_diff = abs(int(flat[a_idx]) - int(flat[b_idx]))
+            if new_diff < lower:
+                adjust = lower - new_diff
+                if flat[a_idx] >= flat[b_idx]:
+                    flat[a_idx] = np.uint8(min(255, int(flat[a_idx]) + adjust))
+                else:
+                    flat[b_idx] = np.uint8(min(255, int(flat[b_idx]) + adjust))
 
         if bit_index < len(bit_stream):
             raise ValueError("Failed to embed full payload using PVD algorithm")
@@ -141,22 +150,16 @@ class PVDSteganography:
 
             a_idx = pos
             b_idx = pos + 1
-            pixel_a = int(flat[a_idx])
-            pixel_b = int(flat[b_idx])
-            bits_per_pair = self._BITS_PER_PAIR
+            diff = abs(int(flat[a_idx]) - int(flat[b_idx]))
+            _lower, _, bits_per_pair = self._range_for_difference(diff)
 
             first_len = (bits_per_pair + 1) // 2
-            second_len = bits_per_pair - first_len
+            second_len = bits_per_pair // 2
 
-            bits = ""
-            if first_len:
-                mask = (1 << first_len) - 1
-                bits += format(pixel_a & mask, f"0{first_len}b")
-            if second_len:
-                mask = (1 << second_len) - 1
-                bits += format(pixel_b & mask, f"0{second_len}b")
-
-            chunk = bits
+            chunk = (
+                self._read_bits(flat[a_idx], first_len)
+                + self._read_bits(flat[b_idx], second_len)
+            )
 
             if target_bits is None and len(bits_collected) + len(chunk) >= 32:
                 prefix_needed = 32 - len(bits_collected)
@@ -204,9 +207,34 @@ class PVDSteganography:
         for pair_index, pos in enumerate(range(0, len(flat) - 1, 2)):
             if pair_index % pair_skip != 0:
                 continue
-            bits = self._BITS_PER_PAIR
+            diff = abs(int(flat[pos]) - int(flat[pos + 1]))
+            _, _, bits = self._range_for_difference(diff)
             capacity += bits
         return capacity
+
+    @classmethod
+    def _range_for_difference(cls, diff: int) -> Tuple[int, int, int]:
+        for lower, upper, bits in cls._RANGES:
+            if lower <= diff <= upper:
+                return lower, upper, bits
+        return cls._RANGES[-1]
+
+    @staticmethod
+    def _write_bits(value: np.uint8, bits: str) -> np.uint8:
+        if not bits:
+            return value
+        width = len(bits)
+        mask = (1 << width) - 1
+        new_value = (int(value) & ~mask) | int(bits, 2)
+        return np.uint8(max(0, min(255, new_value)))
+
+    @staticmethod
+    def _read_bits(value: np.uint8, width: int) -> str:
+        if width <= 0:
+            return ""
+        mask = (1 << width) - 1
+        return format(int(value) & mask, f"0{width}b")
+
 
 def _bytes_to_bits(data: bytes) -> str:
     return "".join(format(byte, "08b") for byte in data)

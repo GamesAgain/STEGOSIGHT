@@ -24,7 +24,7 @@ class AdaptiveSteganography:
     
     def __init__(self):
         """Initialize adaptive steganography"""
-        self.lsb = LSBSteganography(mode='sequential')
+        self.lsb = LSBSteganography(mode='adaptive')
         self.last_method = 'adaptive'
         logger.debug("AdaptiveSteganography initialized")
     
