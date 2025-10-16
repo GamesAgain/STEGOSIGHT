@@ -594,6 +594,20 @@ class StegosightGUI(QMainWindow):
             callback()
 
 
+class STEGOSIGHTApp(StegosightGUI):
+    """Backward compatible alias for the main STEGOSIGHT GUI window.
+
+    Older entry points expect a ``STEGOSIGHTApp`` symbol in ``gui``.
+    The refreshed interface refactored the main window into
+    :class:`StegosightGUI`, but ``main.run_gui`` (and potentially other
+    integrations) still import ``STEGOSIGHTApp``.  Expose a thin subclass
+    so that these imports continue to work without modifying existing
+    startup code.
+    """
+
+    pass
+
+
 def main() -> int:
     app = QApplication(sys.argv)
     window = StegosightGUI()
