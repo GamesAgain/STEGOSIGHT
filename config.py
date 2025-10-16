@@ -46,5 +46,27 @@ CRYPTO_SETTINGS = {
 
 # Steganalysis
 ANALYSIS_SETTINGS = {
-    "weights": {"chi_square": 0.4, "ela": 0.3, "histogram": 0.3}
+    "weights": {
+        "chi_square": 0.4,
+        "histogram": 0.3,
+        "ela": 0.3,
+        "ml": 0.2,
+    },
+    "risk_thresholds": {
+        "low": 30,
+        "medium": 60,
+        "high": 80,
+    },
+    "default_methods": ["chi-square", "histogram", "ela"],
+}
+
+NEUTRALIZATION_SETTINGS = {
+    "recompression": {
+        "jpeg_quality": 85,
+        "png_compression": 6,
+    },
+    "transform": {
+        "resize_tolerance": 0.02,
+        "noise_level": 1.5,
+    },
 }
