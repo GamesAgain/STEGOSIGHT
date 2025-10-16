@@ -121,7 +121,7 @@ class ExtractTab(QWidget):
         layout = QVBoxLayout(group)
 
         self.encrypted_cb = QCheckBox("ข้อมูลถูกเข้ารหัส (ต้องใช้รหัสผ่าน)")
-        self.encrypted_cb.setChecked(True)
+        self.encrypted_cb.setChecked(False)
         layout.addWidget(self.encrypted_cb)
 
         pwd_row = QHBoxLayout()
@@ -129,6 +129,7 @@ class ExtractTab(QWidget):
         self.password_input = QLineEdit()
         self.password_input.setEchoMode(QLineEdit.Password)
         self.password_input.setPlaceholderText("กรอกรหัสผ่าน...")
+        self.password_input.setEnabled(False)
         pwd_row.addWidget(self.password_input)
         layout.addLayout(pwd_row)
 
@@ -392,6 +393,12 @@ class ExtractTab(QWidget):
 
     def _on_worker_error(self, error: str) -> None:
         QMessageBox.critical(self, "ข้อผิดพลาด", f"เกิดข้อผิดพลาด:\n{error}")
+        if "อาจถูกเข้ารหัส" in error:
+            self.encrypted_cb.setChecked(True)
+            self.details_labels["สถานะการเข้ารหัส"].setText("ต้องใช้รหัสผ่าน")
+            self.password_input.setEnabled(True)
+            self.password_input.setFocus()
+            self.password_input.selectAll()
         self._set_busy(False)
 
     def _on_worker_finished(self) -> None:
