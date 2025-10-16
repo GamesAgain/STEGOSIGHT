@@ -1,0 +1,156 @@
+2025-10-16 14:07:48 [INFO] __main__ - Starting STEGOSIGHT v1.0.0
+2025-10-16 14:07:48 [INFO] __main__ - Python version: 3.10.0 (tags/v3.10.0:b494f59, Oct  4 2021, 19:00:18) [MSC v.1929 64 bit (AMD64)]
+2025-10-16 14:07:48 [INFO] __main__ - Platform: win32
+2025-10-16 14:07:50 [INFO] __main__ - Starting STEGOSIGHT in GUI mode
+2025-10-16 14:07:51 [ERROR] __main__ - Failed to import GUI modules: No module named 'gui_tabs'
+2025-10-16 14:08:48 [INFO] __main__ - Starting STEGOSIGHT v1.0.0
+2025-10-16 14:08:48 [INFO] __main__ - Python version: 3.10.0 (tags/v3.10.0:b494f59, Oct  4 2021, 19:00:18) [MSC v.1929 64 bit (AMD64)]
+2025-10-16 14:08:48 [INFO] __main__ - Platform: win32
+2025-10-16 14:08:48 [INFO] __main__ - Starting STEGOSIGHT in GUI mode
+2025-10-16 14:08:48 [ERROR] __main__ - Failed to import GUI modules: No module named 'gui_tabs'
+2025-10-16 14:08:51 [INFO] __main__ - Starting STEGOSIGHT v1.0.0
+2025-10-16 14:08:51 [INFO] __main__ - Python version: 3.10.0 (tags/v3.10.0:b494f59, Oct  4 2021, 19:00:18) [MSC v.1929 64 bit (AMD64)]
+2025-10-16 14:08:51 [INFO] __main__ - Platform: win32
+2025-10-16 14:08:51 [INFO] __main__ - Starting STEGOSIGHT in GUI mode
+2025-10-16 14:08:51 [ERROR] __main__ - Failed to import GUI modules: No module named 'gui_tabs'
+2025-10-16 14:09:08 [INFO] __main__ - Starting STEGOSIGHT v1.0.0
+2025-10-16 14:09:08 [INFO] __main__ - Python version: 3.10.0 (tags/v3.10.0:b494f59, Oct  4 2021, 19:00:18) [MSC v.1929 64 bit (AMD64)]
+2025-10-16 14:09:08 [INFO] __main__ - Platform: win32
+2025-10-16 14:09:08 [INFO] __main__ - Starting STEGOSIGHT in GUI mode
+2025-10-16 14:09:08 [ERROR] __main__ - Failed to import GUI modules: No module named 'gui_tabs'
+2025-10-16 14:09:35 [INFO] __main__ - Starting STEGOSIGHT v1.0.0
+2025-10-16 14:09:35 [INFO] __main__ - Python version: 3.10.0 (tags/v3.10.0:b494f59, Oct  4 2021, 19:00:18) [MSC v.1929 64 bit (AMD64)]
+2025-10-16 14:09:35 [INFO] __main__ - Platform: win32
+2025-10-16 14:09:35 [INFO] __main__ - Starting STEGOSIGHT in GUI mode
+2025-10-16 14:09:35 [ERROR] __main__ - Failed to import GUI modules: No module named 'gui_tabs'
+2025-10-16 14:09:59 [INFO] __main__ - Starting STEGOSIGHT v1.0.0
+2025-10-16 14:09:59 [INFO] __main__ - Python version: 3.10.0 (tags/v3.10.0:b494f59, Oct  4 2021, 19:00:18) [MSC v.1929 64 bit (AMD64)]
+2025-10-16 14:09:59 [INFO] __main__ - Platform: win32
+2025-10-16 14:10:00 [INFO] __main__ - Starting STEGOSIGHT in GUI mode
+2025-10-16 14:10:00 [ERROR] __main__ - Failed to import GUI modules: cannot import name 'EmbedTab' from 'gui_tabs' (C:\Users\ACER\Desktop\Test\STEGOSIGHT\gui_tabs.py)
+2025-10-16 14:10:48 [INFO] __main__ - Starting STEGOSIGHT v1.0.0
+2025-10-16 14:10:48 [INFO] __main__ - Python version: 3.10.0 (tags/v3.10.0:b494f59, Oct  4 2021, 19:00:18) [MSC v.1929 64 bit (AMD64)]
+2025-10-16 14:10:48 [INFO] __main__ - Platform: win32
+2025-10-16 14:10:48 [INFO] __main__ - Starting STEGOSIGHT in GUI mode
+2025-10-16 14:10:49 [INFO] gui - STEGOSIGHT GUI initialized
+2025-10-16 14:10:49 [INFO] __main__ - GUI initialized successfully
+2025-10-16 14:18:45 [INFO] __main__ - Starting STEGOSIGHT v1.0.0
+2025-10-16 14:18:45 [INFO] __main__ - Python version: 3.10.0 (tags/v3.10.0:b494f59, Oct  4 2021, 19:00:18) [MSC v.1929 64 bit (AMD64)]
+2025-10-16 14:18:45 [INFO] __main__ - Platform: win32
+2025-10-16 14:18:46 [INFO] __main__ - Starting STEGOSIGHT in GUI mode
+2025-10-16 14:18:47 [INFO] gui - STEGOSIGHT GUI initialized
+2025-10-16 14:18:47 [INFO] __main__ - GUI initialized successfully
+2025-10-16 14:22:21 [ERROR] gui - Error in worker thread: log_operation() missing 1 required positional argument: 'operation'
+Traceback (most recent call last):
+  File "D:\CS MSU\CSProject\Prototype\STEGOSIGHT\gui.py", line 48, in run
+    result = self.extract_operation()
+  File "D:\CS MSU\CSProject\Prototype\STEGOSIGHT\gui.py", line 114, in extract_operation
+    from steganography.adaptive import AdaptiveSteganography
+  File "D:\CS MSU\CSProject\Prototype\STEGOSIGHT\steganography\__init__.py", line 3, in <module>
+    from .lsb import LSBSteganography
+  File "D:\CS MSU\CSProject\Prototype\STEGOSIGHT\steganography\lsb.py", line 15, in <module>
+    class LSBSteganography:
+  File "D:\CS MSU\CSProject\Prototype\STEGOSIGHT\steganography\lsb.py", line 30, in LSBSteganography
+    @log_operation("LSB Embed")
+TypeError: log_operation() missing 1 required positional argument: 'operation'
+2025-10-16 14:23:07 [ERROR] gui - Error in worker thread: log_operation() missing 1 required positional argument: 'operation'
+Traceback (most recent call last):
+  File "D:\CS MSU\CSProject\Prototype\STEGOSIGHT\gui.py", line 46, in run
+    result = self.embed_operation()
+  File "D:\CS MSU\CSProject\Prototype\STEGOSIGHT\gui.py", line 67, in embed_operation
+    from steganography.adaptive import AdaptiveSteganography
+  File "D:\CS MSU\CSProject\Prototype\STEGOSIGHT\steganography\__init__.py", line 3, in <module>
+    from .lsb import LSBSteganography
+  File "D:\CS MSU\CSProject\Prototype\STEGOSIGHT\steganography\lsb.py", line 15, in <module>
+    class LSBSteganography:
+  File "D:\CS MSU\CSProject\Prototype\STEGOSIGHT\steganography\lsb.py", line 30, in LSBSteganography
+    @log_operation("LSB Embed")
+TypeError: log_operation() missing 1 required positional argument: 'operation'
+2025-10-16 14:23:13 [ERROR] gui - Error in worker thread: log_operation() missing 1 required positional argument: 'operation'
+Traceback (most recent call last):
+  File "D:\CS MSU\CSProject\Prototype\STEGOSIGHT\gui.py", line 46, in run
+    result = self.embed_operation()
+  File "D:\CS MSU\CSProject\Prototype\STEGOSIGHT\gui.py", line 67, in embed_operation
+    from steganography.adaptive import AdaptiveSteganography
+  File "D:\CS MSU\CSProject\Prototype\STEGOSIGHT\steganography\__init__.py", line 3, in <module>
+    from .lsb import LSBSteganography
+  File "D:\CS MSU\CSProject\Prototype\STEGOSIGHT\steganography\lsb.py", line 15, in <module>
+    class LSBSteganography:
+  File "D:\CS MSU\CSProject\Prototype\STEGOSIGHT\steganography\lsb.py", line 30, in LSBSteganography
+    @log_operation("LSB Embed")
+TypeError: log_operation() missing 1 required positional argument: 'operation'
+2025-10-16 14:23:21 [ERROR] gui - Error in worker thread: log_operation() missing 1 required positional argument: 'operation'
+Traceback (most recent call last):
+  File "D:\CS MSU\CSProject\Prototype\STEGOSIGHT\gui.py", line 46, in run
+    result = self.embed_operation()
+  File "D:\CS MSU\CSProject\Prototype\STEGOSIGHT\gui.py", line 67, in embed_operation
+    from steganography.adaptive import AdaptiveSteganography
+  File "D:\CS MSU\CSProject\Prototype\STEGOSIGHT\steganography\__init__.py", line 3, in <module>
+    from .lsb import LSBSteganography
+  File "D:\CS MSU\CSProject\Prototype\STEGOSIGHT\steganography\lsb.py", line 15, in <module>
+    class LSBSteganography:
+  File "D:\CS MSU\CSProject\Prototype\STEGOSIGHT\steganography\lsb.py", line 30, in LSBSteganography
+    @log_operation("LSB Embed")
+TypeError: log_operation() missing 1 required positional argument: 'operation'
+2025-10-16 14:30:43 [ERROR] gui - Error in worker thread: log_operation() missing 1 required positional argument: 'operation'
+Traceback (most recent call last):
+  File "D:\CS MSU\CSProject\Prototype\STEGOSIGHT\gui.py", line 46, in run
+    result = self.embed_operation()
+  File "D:\CS MSU\CSProject\Prototype\STEGOSIGHT\gui.py", line 67, in embed_operation
+    from steganography.adaptive import AdaptiveSteganography
+  File "D:\CS MSU\CSProject\Prototype\STEGOSIGHT\steganography\__init__.py", line 3, in <module>
+    from .lsb import LSBSteganography
+  File "D:\CS MSU\CSProject\Prototype\STEGOSIGHT\steganography\lsb.py", line 15, in <module>
+    class LSBSteganography:
+  File "D:\CS MSU\CSProject\Prototype\STEGOSIGHT\steganography\lsb.py", line 30, in LSBSteganography
+    @log_operation("LSB Embed")
+TypeError: log_operation() missing 1 required positional argument: 'operation'
+2025-10-16 15:59:04 [INFO] __main__ - Starting STEGOSIGHT v1.0.0
+2025-10-16 15:59:04 [INFO] __main__ - Python version: 3.10.0 (tags/v3.10.0:b494f59, Oct  4 2021, 19:00:18) [MSC v.1929 64 bit (AMD64)]
+2025-10-16 15:59:04 [INFO] __main__ - Platform: win32
+2025-10-16 15:59:06 [INFO] __main__ - Starting STEGOSIGHT in GUI mode
+2025-10-16 15:59:07 [INFO] gui - STEGOSIGHT GUI initialized
+2025-10-16 15:59:08 [INFO] __main__ - GUI initialized successfully
+2025-10-16 15:59:32 [INFO] gui - Embedding pipeline not available, using simulator: log_operation() missing 1 required positional argument: 'operation'
+2025-10-16 16:03:32 [INFO] __main__ - Starting STEGOSIGHT v1.0.0
+2025-10-16 16:03:32 [INFO] __main__ - Python version: 3.10.0 (tags/v3.10.0:b494f59, Oct  4 2021, 19:00:18) [MSC v.1929 64 bit (AMD64)]
+2025-10-16 16:03:32 [INFO] __main__ - Platform: win32
+2025-10-16 16:03:34 [INFO] __main__ - Starting STEGOSIGHT in GUI mode
+2025-10-16 16:03:36 [INFO] gui - STEGOSIGHT GUI initialized
+2025-10-16 16:03:36 [INFO] __main__ - GUI initialized successfully
+2025-10-16 16:11:52 [INFO] __main__ - Starting STEGOSIGHT v0.1.0
+2025-10-16 16:11:52 [INFO] __main__ - Python version: 3.10.0 (tags/v3.10.0:b494f59, Oct  4 2021, 19:00:18) [MSC v.1929 64 bit (AMD64)]
+2025-10-16 16:11:52 [INFO] __main__ - Platform: win32
+2025-10-16 16:11:52 [INFO] __main__ - Starting STEGOSIGHT in GUI mode
+2025-10-16 16:11:53 [INFO] gui - STEGOSIGHT GUI initialized
+2025-10-16 16:11:53 [INFO] __main__ - GUI initialized successfully
+2025-10-16 16:28:04 [INFO] __main__ - Starting STEGOSIGHT v0.1.0
+2025-10-16 16:28:04 [INFO] __main__ - Python version: 3.10.0 (tags/v3.10.0:b494f59, Oct  4 2021, 19:00:18) [MSC v.1929 64 bit (AMD64)]
+2025-10-16 16:28:04 [INFO] __main__ - Platform: win32
+2025-10-16 16:28:05 [INFO] __main__ - Starting STEGOSIGHT in GUI mode
+2025-10-16 16:28:06 [INFO] gui - STEGOSIGHT GUI initialized
+2025-10-16 16:28:06 [INFO] __main__ - GUI initialized successfully
+2025-10-16 16:37:19 [INFO] gui - Analysis pipeline not available, using simulator: No module named 'scipy'
+2025-10-16 22:18:42 [INFO] __main__ - Starting STEGOSIGHT v0.1.0
+2025-10-16 22:18:42 [INFO] __main__ - Python version: 3.10.0 (tags/v3.10.0:b494f59, Oct  4 2021, 19:00:18) [MSC v.1929 64 bit (AMD64)]
+2025-10-16 22:18:42 [INFO] __main__ - Platform: win32
+2025-10-16 22:18:43 [INFO] __main__ - Starting STEGOSIGHT in GUI mode
+2025-10-16 22:18:44 [INFO] gui - STEGOSIGHT GUI initialized
+2025-10-16 22:18:44 [INFO] __main__ - GUI initialized successfully
+2025-10-16 22:28:58 [INFO] __main__ - Starting STEGOSIGHT v0.1.0
+2025-10-16 22:28:58 [INFO] __main__ - Python version: 3.10.0 (tags/v3.10.0:b494f59, Oct  4 2021, 19:00:18) [MSC v.1929 64 bit (AMD64)]
+2025-10-16 22:28:58 [INFO] __main__ - Platform: win32
+2025-10-16 22:28:58 [INFO] __main__ - Starting STEGOSIGHT in GUI mode
+2025-10-16 22:28:58 [ERROR] __main__ - Failed to import GUI modules: cannot import name 'STEGOSIGHTApp' from 'gui' (D:\CS MSU\CSProject\New\Prototype\STEGOSIGHT\gui.py)
+2025-10-16 22:29:23 [INFO] __main__ - Starting STEGOSIGHT v0.1.0
+2025-10-16 22:29:23 [INFO] __main__ - Python version: 3.10.0 (tags/v3.10.0:b494f59, Oct  4 2021, 19:00:18) [MSC v.1929 64 bit (AMD64)]
+2025-10-16 22:29:23 [INFO] __main__ - Platform: win32
+2025-10-16 22:29:23 [INFO] __main__ - Starting STEGOSIGHT in GUI mode
+2025-10-16 22:29:24 [INFO] gui - STEGOSIGHT GUI initialized
+2025-10-16 22:29:24 [INFO] __main__ - GUI initialized successfully
+2025-10-16 22:34:15 [INFO] __main__ - Starting STEGOSIGHT v0.1.0
+2025-10-16 22:34:15 [INFO] __main__ - Python version: 3.10.0 (tags/v3.10.0:b494f59, Oct  4 2021, 19:00:18) [MSC v.1929 64 bit (AMD64)]
+2025-10-16 22:34:15 [INFO] __main__ - Platform: win32
+2025-10-16 22:34:16 [INFO] __main__ - Starting STEGOSIGHT in GUI mode
+2025-10-16 22:34:16 [INFO] gui - STEGOSIGHT GUI initialized
+2025-10-16 22:34:16 [INFO] __main__ - GUI initialized successfully
