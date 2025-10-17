@@ -29,7 +29,6 @@ from PyQt5.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
-    QScrollArea,
     QSplitter,
     QTabWidget,
     QTextEdit,
@@ -154,12 +153,9 @@ class WorkbenchTab(QWidget):
 
         splitter = QSplitter(Qt.Horizontal)
 
-        left_scroll = QScrollArea()
-        left_scroll.setWidgetResizable(True)
         left_container = QWidget()
         left_container.setLayout(self._build_left_column())
-        left_scroll.setWidget(left_container)
-        splitter.addWidget(left_scroll)
+        splitter.addWidget(left_container)
 
         right_container = QWidget()
         right_container.setLayout(self._build_right_column())
@@ -202,7 +198,6 @@ class WorkbenchTab(QWidget):
 
         column.addWidget(self._build_file_info_group())
         column.addWidget(self._build_tools_group(), 1)
-        column.addWidget(self._build_history_group(), 1)
 
         column.addStretch(1)
         return column
@@ -210,7 +205,8 @@ class WorkbenchTab(QWidget):
     def _build_right_column(self) -> QVBoxLayout:
         column = QVBoxLayout()
         column.setSpacing(16)
-        column.addWidget(self._build_preview_group(), 1)
+        column.addWidget(self._build_preview_group(), 2)
+        column.addWidget(self._build_history_group(), 1)
         column.addStretch(1)
         return column
 
@@ -277,6 +273,7 @@ class WorkbenchTab(QWidget):
         self.history_list = QListWidget()
         self.history_list.setObjectName("workbenchHistoryList")
         self.history_list.setAlternatingRowColors(True)
+        self.history_list.setMinimumHeight(140)
         layout.addWidget(self.history_list)
 
         return group
