@@ -284,8 +284,92 @@ class WorkerThread(QThread):
             password = self.params.get("password") or None
             requested_method = str(self.params.get("method", "adaptive")).lower()
             expects_encrypted = bool(self.params.get("expects_encrypted", False))
-
             self._step(20, "กำลังโหลดไฟล์…")
+
+            audio_methods = {"audio_lsb", "audio_adaptive"}
+            video_methods = {"video_lsb", "video_adaptive"}
+
+            if requested_method in audio_methods:
+                self._step(40, "กำลังดึงข้อมูลเสียง…")
+                try:
+                    from steganography.audio import AudioSteganography
+                except Exception as exc:  # pragma: no cover - optional dependency
+                    raise RuntimeError("ไม่สามารถโหลดโมดูลสำหรับถอดข้อมูลเสียงได้") from exc
+
+                extractor = AudioSteganography()
+                data = extractor.extract(stego_path)
+                used_method = "audio_lsb"
+                attempted = [requested_method]
+                if requested_method != used_method:
+                    attempted.append(used_method)
+
+                payload_detected = is_payload_blob(data)
+                encrypted = False
+
+                if password:
+                    self._step(70, "กำลังถอดรหัสข้อมูล…")
+                    try:
+                        data = decrypt_data(data, password)
+                    except Exception as exc:
+                        raise ValueError("รหัสผ่านไม่ถูกต้องหรือข้อมูลถูกทำลาย") from exc
+                    encrypted = True
+                    payload_detected = is_payload_blob(data)
+                    if not payload_detected:
+                        raise ValueError("ไม่สามารถยืนยันโครงสร้างข้อมูลหลังถอดรหัส")
+                elif expects_encrypted:
+                    raise ValueError("จำเป็นต้องกรอกรหัสผ่านเพื่อถอดข้อมูลที่เข้ารหัส")
+
+                self._step(95, "กำลังตรวจสอบผลลัพธ์…")
+                self._step(100, "เสร็จสิ้น")
+                return {
+                    "data": data,
+                    "method": used_method,
+                    "attempted_methods": attempted,
+                    "payload_detected": payload_detected,
+                    "encrypted": encrypted,
+                    "media_type": "audio",
+                }
+
+            if requested_method in video_methods:
+                self._step(40, "กำลังดึงข้อมูลวิดีโอ…")
+                try:
+                    from steganography.video import VideoSteganography
+                except Exception as exc:  # pragma: no cover - optional dependency
+                    raise RuntimeError("ไม่สามารถโหลดโมดูลสำหรับถอดข้อมูลวิดีโอได้") from exc
+
+                extractor = VideoSteganography()
+                data = extractor.extract(stego_path)
+                used_method = "video_lsb"
+                attempted = [requested_method]
+                if requested_method != used_method:
+                    attempted.append(used_method)
+
+                payload_detected = is_payload_blob(data)
+                encrypted = False
+
+                if password:
+                    self._step(70, "กำลังถอดรหัสข้อมูล…")
+                    try:
+                        data = decrypt_data(data, password)
+                    except Exception as exc:
+                        raise ValueError("รหัสผ่านไม่ถูกต้องหรือข้อมูลถูกทำลาย") from exc
+                    encrypted = True
+                    payload_detected = is_payload_blob(data)
+                    if not payload_detected:
+                        raise ValueError("ไม่สามารถยืนยันโครงสร้างข้อมูลหลังถอดรหัส")
+                elif expects_encrypted:
+                    raise ValueError("จำเป็นต้องกรอกรหัสผ่านเพื่อถอดข้อมูลที่เข้ารหัส")
+
+                self._step(95, "กำลังตรวจสอบผลลัพธ์…")
+                self._step(100, "เสร็จสิ้น")
+                return {
+                    "data": data,
+                    "method": used_method,
+                    "attempted_methods": attempted,
+                    "payload_detected": payload_detected,
+                    "encrypted": encrypted,
+                    "media_type": "video",
+                }
 
             adaptive_mode = requested_method in {"adaptive", "auto"}
             methods_to_try: List[str] = []
@@ -369,6 +453,7 @@ class WorkerThread(QThread):
                     "attempted_methods": methods_to_try,
                     "payload_detected": payload_detected,
                     "encrypted": encrypted,
+                    "media_type": "image",
                 }
 
             detail = "; ".join(f"{k.upper()}: {v}" for k, v in extraction_errors.items())
