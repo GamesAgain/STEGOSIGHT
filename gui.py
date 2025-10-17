@@ -553,7 +553,7 @@ class StegosightGUI(QMainWindow):
         self.tabs.addTab(self._create_embed_tab(), " 🔒 ซ่อนข้อมูล (Embed)")
         self.tabs.addTab(self._create_extract_tab(), " 🔓 ดึงข้อมูล (Extract)")
         self.tabs.addTab(self._create_analyze_tab(), " 🔍 วิเคราะห์ (Analyze)")
-        self.tabs.addTab(self._create_neutralize_tab(), " 🛡️ ทำให้เป็นกลาง (Neutralize)")
+        self.tabs.addTab(self._create_workbench_tab(), " 🧪 Workbench (Steganalysis)")
         main_layout.addWidget(self.tabs)
 
         main_layout.addWidget(self._create_status_bar())
@@ -830,6 +830,11 @@ class StegosightGUI(QMainWindow):
         from gui_tabs import AnalyzeTab
 
         return AnalyzeTab(self)
+
+    def _create_workbench_tab(self) -> QWidget:
+        from gui_tabs import WorkbenchTab
+
+        return WorkbenchTab(self)
 
     def _create_neutralize_tab(self) -> QWidget:
         from gui_tabs import NeutralizeTab
