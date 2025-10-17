@@ -62,6 +62,8 @@ except Exception:  # pragma: no cover - fallback logger
     )
     logger = logging.getLogger(__name__)
 
+from utils.tab_utils import FullTextTabBar
+
 
 class WorkerThread(QThread):
     """Worker thread สำหรับประมวลผลแบบ asynchronous."""
@@ -550,15 +552,25 @@ class StegosightGUI(QMainWindow):
         main_layout.addWidget(self._create_header())
 
         self.tabs = QTabWidget()
+        self.tabs.setTabBar(FullTextTabBar(minimum_width=220, extra_padding=72))
+        self.tabs.setUsesScrollButtons(True)
         self.tabs.addTab(self._create_embed_tab(), " 🔒 ซ่อนข้อมูล (Embed)")
         self.tabs.addTab(self._create_extract_tab(), " 🔓 ดึงข้อมูล (Extract)")
         self.tabs.addTab(self._create_analyze_tab(), " 🔍 วิเคราะห์ (Analyze)")
         self.tabs.addTab(self._create_workbench_tab(), " 🧪 Workbench (Steganalysis)")
+        self._apply_tab_tooltips(self.tabs)
         main_layout.addWidget(self.tabs)
 
         main_layout.addWidget(self._create_status_bar())
 
         self.apply_stylesheet()
+
+    def _apply_tab_tooltips(self, tab_widget: QTabWidget) -> None:
+        """Ensure the full tab labels remain accessible via tooltips."""
+
+        for index in range(tab_widget.count()):
+            text = tab_widget.tabText(index).strip()
+            tab_widget.setTabToolTip(index, text)
 
     def _create_header(self) -> QFrame:
         header = QFrame()
