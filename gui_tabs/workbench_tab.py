@@ -29,7 +29,6 @@ from PyQt5.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
-    QScrollArea,
     QTabWidget,
     QTextEdit,
     QVBoxLayout,
@@ -235,12 +234,7 @@ class WorkbenchTab(QWidget):
         self.tool_tabs.addTab(self._build_neutralize_tab(), "Neutralize")
         self._apply_tab_tooltips(self.tool_tabs)
 
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QScrollArea.NoFrame)
-        scroll_area.setWidget(self.tool_tabs)
-
-        outer_layout.addWidget(scroll_area, 1)
+        outer_layout.addWidget(self.tool_tabs, 1)
 
         action_row = QHBoxLayout()
         self.undo_btn = QPushButton("ย้อนกลับ")
