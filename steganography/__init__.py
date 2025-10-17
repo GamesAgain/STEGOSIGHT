@@ -11,6 +11,8 @@ __all__ = [
     "LSBSteganography",
     "PVDSteganography",
     "APPEND_MARKER",
+    "APPEND_VERSION",
+    "AppendedPayload",
     "append_payload_to_file",
     "extract_appended_payload",
     "has_appended_payload",
@@ -24,6 +26,8 @@ if TYPE_CHECKING:  # pragma: no cover - only for typing
     from .adaptive import AdaptiveSteganography
     from .appender import (
         APPEND_MARKER,
+        APPEND_VERSION,
+        AppendedPayload,
         append_payload_to_file,
         extract_appended_payload,
         has_appended_payload,
@@ -49,6 +53,8 @@ def __getattr__(name: str) -> Any:
         return import_module(".pvd", __name__).PVDSteganography
     if name in {
         "APPEND_MARKER",
+        "APPEND_VERSION",
+        "AppendedPayload",
         "append_payload_to_file",
         "extract_appended_payload",
         "has_appended_payload",
