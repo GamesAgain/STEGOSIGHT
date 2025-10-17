@@ -33,6 +33,7 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QComboBox,
+    QSizePolicy,
 )
 
 from utils.tab_utils import FullTextTabBar
@@ -107,6 +108,8 @@ class WorkbenchTab(QWidget):
 
     def _register_action_buttons(self, buttons: Iterable[QPushButton]) -> None:
         for button in buttons:
+            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            button.setMinimumHeight(36)
             if button not in self._action_buttons:
                 self._action_buttons.append(button)
 
@@ -171,6 +174,7 @@ class WorkbenchTab(QWidget):
         outer_layout.setSpacing(12)
 
         self.tool_tabs = QTabWidget()
+        self.tool_tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.tool_tabs.setTabBar(FullTextTabBar(minimum_width=150, extra_padding=56))
         self.tool_tabs.setUsesScrollButtons(True)
         self.tool_tabs.addTab(self._build_encoding_tab(), "Encoding")
@@ -179,7 +183,7 @@ class WorkbenchTab(QWidget):
         self.tool_tabs.addTab(self._build_neutralize_tab(), "Neutralize")
         self._apply_tab_tooltips(self.tool_tabs)
 
-        outer_layout.addWidget(self.tool_tabs)
+        outer_layout.addWidget(self.tool_tabs, 1)
 
         action_row = QHBoxLayout()
         self.undo_btn = QPushButton("ย้อนกลับ")
@@ -260,12 +264,14 @@ class WorkbenchTab(QWidget):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setSpacing(10)
+        layout.setContentsMargins(12, 12, 12, 12)
 
         info = QLabel("ใช้การเข้ารหัส/ถอดรหัสที่พบบ่อยเพื่อตรวจสอบ payload")
         info.setWordWrap(True)
         layout.addWidget(info)
 
         row1 = QHBoxLayout()
+        row1.setSpacing(12)
         self.base64_decode_btn = QPushButton("Base64 Decode")
         self.base64_decode_btn.clicked.connect(lambda: self._apply_transform("Base64 Decode"))
         self.base64_encode_btn = QPushButton("Base64 Encode")
@@ -276,6 +282,7 @@ class WorkbenchTab(QWidget):
         layout.addLayout(row1)
 
         row2 = QHBoxLayout()
+        row2.setSpacing(12)
         self.hex_decode_btn = QPushButton("Hex Decode")
         self.hex_decode_btn.clicked.connect(lambda: self._apply_transform("Hex Decode"))
         self.hex_encode_btn = QPushButton("Hex Encode")
@@ -292,12 +299,14 @@ class WorkbenchTab(QWidget):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setSpacing(10)
+        layout.setContentsMargins(12, 12, 12, 12)
 
         info = QLabel("ทดสอบการบีบอัดเพื่อคลายข้อมูลที่อาจถูกฝัง")
         info.setWordWrap(True)
         layout.addWidget(info)
 
         row1 = QHBoxLayout()
+        row1.setSpacing(12)
         self.zlib_decomp_btn = QPushButton("Zlib Decompress")
         self.zlib_decomp_btn.clicked.connect(lambda: self._apply_transform("Zlib Decompress"))
         self.zlib_comp_btn = QPushButton("Zlib Compress")
@@ -308,6 +317,7 @@ class WorkbenchTab(QWidget):
         layout.addLayout(row1)
 
         row2 = QHBoxLayout()
+        row2.setSpacing(12)
         self.gzip_decomp_btn = QPushButton("Gzip Decompress")
         self.gzip_decomp_btn.clicked.connect(lambda: self._apply_transform("Gzip Decompress"))
         self.gzip_comp_btn = QPushButton("Gzip Compress")
@@ -324,12 +334,14 @@ class WorkbenchTab(QWidget):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setSpacing(10)
+        layout.setContentsMargins(12, 12, 12, 12)
 
         info = QLabel("ใช้ XOR key เพื่อถอดรหัสหรือเข้ารหัสข้อมูลที่สงสัย")
         info.setWordWrap(True)
         layout.addWidget(info)
 
         row = QHBoxLayout()
+        row.setSpacing(12)
         self.xor_key_input = QLineEdit()
         self.xor_key_input.setPlaceholderText("Key (เช่น secret, 0x41AA, 41 aa bb)")
         self.xor_apply_btn = QPushButton("Apply XOR")
@@ -346,6 +358,7 @@ class WorkbenchTab(QWidget):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setSpacing(10)
+        layout.setContentsMargins(12, 12, 12, 12)
 
         info = QLabel("ทำให้ไฟล์เป็นกลางเพื่อลบร่องรอยการฝังข้อมูล")
         info.setWordWrap(True)
