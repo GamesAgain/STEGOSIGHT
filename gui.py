@@ -114,7 +114,9 @@ class WorkerThread(QThread):
             data = self.params["secret_data"]
             password = self.params.get("password")
             method = str(self.params.get("method", "adaptive"))
+            media_type = str(self.params.get("media_type", "image"))
             options = self.params.get("options")
+            auto_analyze = bool(self.params.get("auto_analyze", True))
 
             temp_dir = Path(self.params.get("temp_dir") or tempfile.gettempdir())
             suffix = cover_path.suffix or ".stego"
@@ -128,6 +130,7 @@ class WorkerThread(QThread):
                 data = encrypt_data(data, password)
 
             self._step(55, "กำลังซ่อนข้อมูล…")
+            adaptive_engine = None
             if method == "append":
                 stego_path = append_payload_to_file(
                     cover_path,
@@ -135,31 +138,51 @@ class WorkerThread(QThread):
                     output_path=output_path,
                 )
                 actual_method = "append"
+                media_type = "image"
+            elif method in {"audio_adaptive", "audio_lsb"}:
+                from steganography.audio import AudioSteganography
+
+                audio_engine = AudioSteganography()
+                stego_path = audio_engine.embed(cover_path, data, output_path=output_path)
+                actual_method = "audio_lsb" if method == "audio_adaptive" else method
+                media_type = "audio"
+            elif method in {"video_adaptive", "video_lsb"}:
+                from steganography.video import VideoSteganography
+
+                video_engine = VideoSteganography()
+                stego_path = video_engine.embed(cover_path, data, output_path=output_path)
+                actual_method = "video_lsb" if method == "video_adaptive" else method
+                media_type = "video"
             else:
                 from steganography.adaptive import AdaptiveSteganography
 
-                stego = AdaptiveSteganography()
-                stego_path = stego.embed(
+                adaptive_engine = AdaptiveSteganography()
+                stego_path = adaptive_engine.embed(
                     cover_path,
                     data,
                     method,
                     output_path=output_path,
                     options=options,
                 )
-                actual_method = getattr(stego, "last_method", method)
+                actual_method = getattr(adaptive_engine, "last_method", method)
+                media_type = "image"
 
-            risk_score = None
-            self._step(80, "กำลังวิเคราะห์ความเสี่ยง…")
-            from steganalysis.risk_scoring import RiskScorer
+            if auto_analyze and media_type == "image":
+                self._step(80, "กำลังวิเคราะห์ความเสี่ยง…")
+                from steganalysis.risk_scoring import RiskScorer
 
-            scorer = RiskScorer()
-            risk_score = scorer.calculate_risk(stego_path)
+                scorer = RiskScorer()
+                risk_score = scorer.calculate_risk(stego_path)
+            else:
+                self._step(80, "กำลังเตรียมผลลัพธ์…")
+                risk_score = None
 
             recommendation = None
-            try:
-                recommendation = stego.get_recommended_settings(cover_path, data)
-            except Exception:
-                recommendation = None
+            if adaptive_engine is not None:
+                try:
+                    recommendation = adaptive_engine.get_recommended_settings(cover_path, data)
+                except Exception:
+                    recommendation = None
 
             self._step(100, "เสร็จสิ้น")
             return {
@@ -168,6 +191,7 @@ class WorkerThread(QThread):
                 "method": actual_method,
                 "options": options,
                 "recommendation": recommendation,
+                "media_type": media_type,
                 "temporary": True,
             }
         except Exception as exc:  # pragma: no cover - simulated pipeline
@@ -178,6 +202,8 @@ class WorkerThread(QThread):
             cover_path = Path(self.params["cover_path"])
             secret_data = self.params.get("secret_data", b"")
             method = str(self.params.get("method", "adaptive"))
+            media_type = str(self.params.get("media_type", "image"))
+            auto_analyze = bool(self.params.get("auto_analyze", True))
             suffix = cover_path.suffix or ".stego"
             fd, temp_name = tempfile.mkstemp(prefix="stego_", suffix=suffix)
             os.close(fd)
@@ -191,19 +217,35 @@ class WorkerThread(QThread):
                         secret_data,
                         output_path=out_path,
                     )
+                    actual_method = "append"
+                    media_type = "image"
+                elif method in {"audio_adaptive", "audio_lsb"}:
+                    out_path.write_bytes(cover_path.read_bytes())
+                    actual_method = "audio_lsb"
+                    media_type = "audio"
+                elif method in {"video_adaptive", "video_lsb"}:
+                    out_path.write_bytes(cover_path.read_bytes())
+                    actual_method = "video_lsb"
+                    media_type = "video"
                 else:
                     out_path.write_bytes(cover_path.read_bytes())
+                    actual_method = method
             except Exception:
                 out_path.write_bytes(b"STEGOSIGHT SIMULATED STEGO FILE")
-            self._step(95, "กำลังวิเคราะห์ความเสี่ยง…")
+                actual_method = method
+            if auto_analyze and media_type == "image":
+                self._step(95, "กำลังวิเคราะห์ความเสี่ยง…")
+                risk_score = {"score": 42, "level": "MEDIUM"}
+            else:
+                self._step(95, "กำลังเตรียมผลลัพธ์…")
+                risk_score = None
             return {
                 "stego_path": str(out_path),
-                "risk_score": {"score": 42, "level": "MEDIUM"}
-                if self.params.get("auto_analyze", True)
-                else None,
-                "method": method,
+                "risk_score": risk_score,
+                "method": actual_method,
                 "options": self.params.get("options"),
                 "recommendation": None,
+                "media_type": media_type,
                 "temporary": True,
             }
 
