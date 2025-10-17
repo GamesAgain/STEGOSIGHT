@@ -298,12 +298,12 @@ class WorkbenchTab(QWidget):
         self.preview_hex.setLineWrapMode(QTextEdit.NoWrap)
         self.preview_hex.setStyleSheet("font-family: 'JetBrains Mono', monospace; font-size: 11px;")
 
-        self.preview_image = QLabel("ไม่มีตัวอย่างภาพ")
+        self.preview_image = QLabel("ยังไม่มีตัวอย่างภาพ")
         self.preview_image.setAlignment(Qt.AlignCenter)
+        self.preview_image.setWordWrap(True)
+        self.preview_image.setMargin(16)
         self.preview_image.setMinimumSize(320, 240)
-        self.preview_image.setStyleSheet(
-            "background-color: #111827; color: #cbd5f5; border: 1px dashed #374151;"
-        )
+        self.preview_image.setObjectName("previewArea")
 
         self.preview_tabs.addTab(self.preview_text, "Text")
         self.preview_tabs.addTab(self.preview_hex, "Hex")
@@ -582,12 +582,13 @@ class WorkbenchTab(QWidget):
         )
 
     def _update_preview_image(self) -> None:
+        self.preview_image.setPixmap(QPixmap())
+
         if self._data is None:
             if self._pending_data is not None:
-                self.preview_image.setText("เริ่มประมวลผลเพื่อดูตัวอย่างภาพ")
+                self.preview_image.setText("🕒 กำลังเตรียมข้อมูล\nเริ่มประมวลผลเพื่อดูตัวอย่างภาพ")
             else:
-                self.preview_image.setText("ไม่มีตัวอย่างภาพ")
-            self.preview_image.setPixmap(QPixmap())
+                self.preview_image.setText("ยังไม่มีตัวอย่างภาพ\nนำเข้าข้อมูลเพื่อดูตัวอย่างที่นี่")
             return
 
         pixmap = QPixmap()
@@ -601,8 +602,9 @@ class WorkbenchTab(QWidget):
             self.preview_image.setText("")
             self.preview_tabs.setCurrentWidget(self.preview_image)
         else:
-            self.preview_image.setPixmap(QPixmap())
-            self.preview_image.setText("ไม่สามารถแสดงผลเป็นภาพได้")
+            self.preview_image.setText(
+                "⚠️ ไม่สามารถแสดงผลเป็นภาพได้\nรองรับเฉพาะข้อมูลไฟล์ภาพ เช่น PNG หรือ JPEG"
+            )
 
     # ------------------------------------------------------------------
     # File info helpers
