@@ -14,6 +14,9 @@ __all__ = [
     "append_payload_to_file",
     "extract_appended_payload",
     "has_appended_payload",
+    "CUSTOM_CHUNK_TYPE",
+    "embed_data_in_chunk",
+    "extract_data_from_chunk",
 ]
 
 
@@ -28,6 +31,11 @@ if TYPE_CHECKING:  # pragma: no cover - only for typing
     from .jpeg_dct import JPEGDCTSteganography
     from .lsb import LSBSteganography
     from .pvd import PVDSteganography
+    from .png_chunks import (
+        CUSTOM_CHUNK_TYPE,
+        embed_data_in_chunk,
+        extract_data_from_chunk,
+    )
 
 
 def __getattr__(name: str) -> Any:
@@ -46,5 +54,12 @@ def __getattr__(name: str) -> Any:
         "has_appended_payload",
     }:
         module = import_module(".appender", __name__)
+        return getattr(module, name)
+    if name in {
+        "CUSTOM_CHUNK_TYPE",
+        "embed_data_in_chunk",
+        "extract_data_from_chunk",
+    }:
+        module = import_module(".png_chunks", __name__)
         return getattr(module, name)
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
