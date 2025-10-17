@@ -11,7 +11,7 @@ import random
 import zlib
 from collections import Counter
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, Iterable, List, Optional, Tuple
 
 from PIL import Image
 
@@ -38,6 +38,10 @@ from PyQt5.QtWidgets import (
 
 ASCII_PRINTABLE = set(range(32, 127)) | {9, 10, 13}
 
+# Hard limits that keep preview rendering responsive even for large payloads.
+MAX_TEXT_PREVIEW = 64 * 1024  # 64 KiB of decoded text
+MAX_HEX_PREVIEW = 8 * 1024  # 8 KiB rendered as hex
+
 
 @dataclass
 class HistoryEntry:
@@ -61,9 +65,12 @@ class WorkbenchTab(QWidget):
         self.parent_window = parent
         self.file_path: Optional[str] = None
         self._data: Optional[bytes] = None
+        self._pending_data: Optional[bytes] = None
         self._history: List[bytes] = []
         self._history_entries: List[HistoryEntry] = []
+        self._action_buttons: List[QPushButton] = []
         self._init_ui()
+        self._update_action_states()
 
     # ------------------------------------------------------------------
     # UI construction
@@ -80,7 +87,12 @@ class WorkbenchTab(QWidget):
         open_btn = QPushButton("เปิดไฟล์…")
         open_btn.clicked.connect(self._browse_file)
 
+        self.process_btn = QPushButton("เริ่มประมวลผล")
+        self.process_btn.setEnabled(False)
+        self.process_btn.clicked.connect(self._activate_pending_data)
+
         header_layout.addWidget(open_btn, 0)
+        header_layout.addWidget(self.process_btn, 0)
         header_layout.addWidget(self.file_label, 1)
         root_layout.addLayout(header_layout)
 
@@ -90,6 +102,30 @@ class WorkbenchTab(QWidget):
         content_layout.addLayout(self._build_left_column(), 4)
         content_layout.addLayout(self._build_right_column(), 6)
         root_layout.addLayout(content_layout, 1)
+
+    def _register_action_buttons(self, buttons: Iterable[QPushButton]) -> None:
+        for button in buttons:
+            if button not in self._action_buttons:
+                self._action_buttons.append(button)
+
+    def _update_action_states(self) -> None:
+        has_data = self._data is not None
+        for button in self._action_buttons:
+            button.setEnabled(has_data)
+
+        if hasattr(self, "undo_btn"):
+            self.undo_btn.setEnabled(has_data and len(self._history) > 1)
+        if hasattr(self, "save_btn"):
+            self.save_btn.setEnabled(has_data)
+        if hasattr(self, "refresh_preview_btn"):
+            self.refresh_preview_btn.setEnabled(has_data)
+        if hasattr(self, "encoding_combo"):
+            self.encoding_combo.setEnabled(has_data)
+        if hasattr(self, "xor_key_input"):
+            self.xor_key_input.setEnabled(has_data)
+
+        if hasattr(self, "process_btn"):
+            self.process_btn.setEnabled(self._pending_data is not None)
 
     def _build_left_column(self) -> QVBoxLayout:
         column = QVBoxLayout()
@@ -145,6 +181,7 @@ class WorkbenchTab(QWidget):
         self.undo_btn.clicked.connect(self._undo)
         self.save_btn = QPushButton("บันทึกผลลัพธ์…")
         self.save_btn.clicked.connect(self._save_output)
+        self._register_action_buttons([self.undo_btn, self.save_btn])
         action_row.addWidget(self.undo_btn)
         action_row.addWidget(self.save_btn)
         action_row.addStretch()
@@ -178,6 +215,7 @@ class WorkbenchTab(QWidget):
 
         self.refresh_preview_btn = QPushButton("รีเฟรชมุมมอง")
         self.refresh_preview_btn.clicked.connect(self._update_preview)
+        self._register_action_buttons([self.refresh_preview_btn])
         controls.addWidget(self.refresh_preview_btn)
         controls.addStretch()
 
@@ -220,6 +258,7 @@ class WorkbenchTab(QWidget):
         self.base64_decode_btn.clicked.connect(lambda: self._apply_transform("Base64 Decode"))
         self.base64_encode_btn = QPushButton("Base64 Encode")
         self.base64_encode_btn.clicked.connect(lambda: self._apply_transform("Base64 Encode"))
+        self._register_action_buttons([self.base64_decode_btn, self.base64_encode_btn])
         row1.addWidget(self.base64_decode_btn)
         row1.addWidget(self.base64_encode_btn)
         layout.addLayout(row1)
@@ -229,6 +268,7 @@ class WorkbenchTab(QWidget):
         self.hex_decode_btn.clicked.connect(lambda: self._apply_transform("Hex Decode"))
         self.hex_encode_btn = QPushButton("Hex Encode")
         self.hex_encode_btn.clicked.connect(lambda: self._apply_transform("Hex Encode"))
+        self._register_action_buttons([self.hex_decode_btn, self.hex_encode_btn])
         row2.addWidget(self.hex_decode_btn)
         row2.addWidget(self.hex_encode_btn)
         layout.addLayout(row2)
@@ -250,6 +290,7 @@ class WorkbenchTab(QWidget):
         self.zlib_decomp_btn.clicked.connect(lambda: self._apply_transform("Zlib Decompress"))
         self.zlib_comp_btn = QPushButton("Zlib Compress")
         self.zlib_comp_btn.clicked.connect(lambda: self._apply_transform("Zlib Compress"))
+        self._register_action_buttons([self.zlib_decomp_btn, self.zlib_comp_btn])
         row1.addWidget(self.zlib_decomp_btn)
         row1.addWidget(self.zlib_comp_btn)
         layout.addLayout(row1)
@@ -259,6 +300,7 @@ class WorkbenchTab(QWidget):
         self.gzip_decomp_btn.clicked.connect(lambda: self._apply_transform("Gzip Decompress"))
         self.gzip_comp_btn = QPushButton("Gzip Compress")
         self.gzip_comp_btn.clicked.connect(lambda: self._apply_transform("Gzip Compress"))
+        self._register_action_buttons([self.gzip_decomp_btn, self.gzip_comp_btn])
         row2.addWidget(self.gzip_decomp_btn)
         row2.addWidget(self.gzip_comp_btn)
         layout.addLayout(row2)
@@ -280,6 +322,7 @@ class WorkbenchTab(QWidget):
         self.xor_key_input.setPlaceholderText("Key (เช่น secret, 0x41AA, 41 aa bb)")
         self.xor_apply_btn = QPushButton("Apply XOR")
         self.xor_apply_btn.clicked.connect(self._apply_xor)
+        self._register_action_buttons([self.xor_apply_btn])
         row.addWidget(self.xor_key_input, 2)
         row.addWidget(self.xor_apply_btn, 1)
         layout.addLayout(row)
@@ -302,6 +345,9 @@ class WorkbenchTab(QWidget):
         self.strip_metadata_btn.clicked.connect(self._strip_metadata)
         self.noise_btn = QPushButton("Apply Noise Filter")
         self.noise_btn.clicked.connect(self._apply_noise)
+        self._register_action_buttons(
+            [self.recompress_btn, self.strip_metadata_btn, self.noise_btn]
+        )
 
         layout.addWidget(self.recompress_btn)
         layout.addWidget(self.strip_metadata_btn)
@@ -326,13 +372,35 @@ class WorkbenchTab(QWidget):
             return
 
         self.file_path = path
-        self._data = data
-        self._history = [data]
-        self._history_entries = [HistoryEntry(f"Loaded: {os.path.basename(path)}", len(data))]
-        self._refresh_history()
-        self.file_label.setText(path)
+        self._pending_data = data
+        self._data = None
+        self._history = []
+        self._history_entries = []
+        self.history_list.clear()
+        self.file_label.setText(f"{path} (รอประมวลผล)")
         self._update_file_info()
         self._update_preview()
+        self._update_action_states()
+
+    def _activate_pending_data(self) -> None:
+        if self._pending_data is None:
+            QMessageBox.information(self, "Workbench", "ไม่มีไฟล์ค้างอยู่ให้ประมวลผล")
+            return
+
+        data = self._pending_data
+        self._pending_data = None
+        self._data = data
+        description = f"Loaded: {os.path.basename(self.file_path)}" if self.file_path else "Loaded"
+        self._history = [data]
+        self._history_entries = [HistoryEntry(description, len(data))]
+        self._refresh_history()
+        if self.file_path:
+            self.file_label.setText(self.file_path)
+        else:
+            self.file_label.setText("(memory)")
+        self._update_file_info()
+        self._update_preview()
+        self._update_action_states()
 
     def _set_data(self, data: bytes, description: str) -> None:
         self._data = data
@@ -341,6 +409,7 @@ class WorkbenchTab(QWidget):
         self._refresh_history()
         self._update_file_info()
         self._update_preview()
+        self._update_action_states()
 
     def _undo(self) -> None:
         if len(self._history) <= 1:
@@ -353,6 +422,7 @@ class WorkbenchTab(QWidget):
         self._refresh_history()
         self._update_file_info()
         self._update_preview()
+        self._update_action_states()
 
     def _save_output(self) -> None:
         if self._data is None:
@@ -391,24 +461,42 @@ class WorkbenchTab(QWidget):
 
     def _update_preview_text(self) -> None:
         if self._data is None:
-            self.preview_text.setPlainText("(no data)")
+            if self._pending_data is not None:
+                self.preview_text.setPlainText("รอเริ่มประมวลผล…")
+            else:
+                self.preview_text.setPlainText("(no data)")
             return
         encoding = self.encoding_combo.currentText() or "utf-8"
         try:
-            text = self._data.decode(encoding, errors="replace")
+            snippet = self._data[:MAX_TEXT_PREVIEW]
+            text = snippet.decode(encoding, errors="replace")
         except Exception:
             text = "(unable to decode with selected encoding)"
+        else:
+            if len(self._data) > MAX_TEXT_PREVIEW:
+                text += (
+                    "\n\n… Preview truncated to "
+                    f"{MAX_TEXT_PREVIEW:,} bytes of {len(self._data):,}."
+                )
         self.preview_text.setPlainText(text)
 
     def _update_preview_hex(self) -> None:
         if self._data is None:
-            self.preview_hex.setPlainText("(no data)")
+            if self._pending_data is not None:
+                self.preview_hex.setPlainText("(รอเริ่มประมวลผล)")
+            else:
+                self.preview_hex.setPlainText("(no data)")
             return
-        self.preview_hex.setPlainText(self._hexdump(self._data))
+        self.preview_hex.setPlainText(
+            self._hexdump(self._data, limit=MAX_HEX_PREVIEW)
+        )
 
     def _update_preview_image(self) -> None:
         if self._data is None:
-            self.preview_image.setText("ไม่มีตัวอย่างภาพ")
+            if self._pending_data is not None:
+                self.preview_image.setText("เริ่มประมวลผลเพื่อดูตัวอย่างภาพ")
+            else:
+                self.preview_image.setText("ไม่มีตัวอย่างภาพ")
             self.preview_image.setPixmap(QPixmap())
             return
 
@@ -431,8 +519,13 @@ class WorkbenchTab(QWidget):
     # ------------------------------------------------------------------
     def _update_file_info(self) -> None:
         if self._data is None:
-            self.info_name.setText("-")
-            self.info_size.setText("-")
+            if self._pending_data is not None:
+                name = os.path.basename(self.file_path) if self.file_path else "(memory)"
+                self.info_name.setText(name)
+                self.info_size.setText(f"{len(self._pending_data):,} bytes (pending)")
+            else:
+                self.info_name.setText("-")
+                self.info_size.setText("-")
             self.info_magic.setText("-")
             self.info_entropy.setText("-")
             self.info_printable.setText("-")
@@ -570,13 +663,26 @@ class WorkbenchTab(QWidget):
     # Utility helpers
     # ------------------------------------------------------------------
     @staticmethod
-    def _hexdump(data: bytes, width: int = 16) -> str:
+    def _hexdump(data: bytes, width: int = 16, limit: Optional[int] = None) -> str:
+        total = len(data)
+        truncated = False
+        if limit is not None and total > limit:
+            data = data[:limit]
+            truncated = True
+
         lines: List[str] = []
         for offset in range(0, len(data), width):
             chunk = data[offset : offset + width]
             hex_part = " ".join(f"{b:02X}" for b in chunk)
             text_part = "".join(chr(b) if 32 <= b <= 126 else "." for b in chunk)
             lines.append(f"{offset:08X}  {hex_part:<{width * 3}}  {text_part}")
+
+        if truncated:
+            lines.append("")
+            lines.append(
+                "… Preview truncated to "
+                f"{limit:,} bytes of {total:,}."
+            )
         return "\n".join(lines)
 
     @staticmethod
