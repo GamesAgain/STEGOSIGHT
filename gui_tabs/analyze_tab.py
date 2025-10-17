@@ -112,16 +112,20 @@ class AnalyzeTab(QWidget):
         type_row = QHBoxLayout()
         type_row.setSpacing(8)
         type_row.addWidget(QLabel("เลือกประเภทสื่อ:"))
-        for media_type, label in {
-            "image": "🖼️ ไฟล์ภาพ",
-            "audio": "🎧 ไฟล์เสียง",
-            "video": "🎞️ ไฟล์วิดีโอ",
-        }.items():
+        for key, label in (
+            ("image", "🖼️ ไฟล์ภาพ"),
+            ("audio", "🎧 ไฟล์เสียง"),
+            ("video", "🎞️ ไฟล์วิดีโอ"),
+        ):
             button = QPushButton(label)
             button.setCheckable(True)
-            button.clicked.connect(lambda _, t=media_type: self._set_media_type(t))
-            self.media_type_buttons[media_type] = button
+            button.setObjectName("toggleButton")
+            button.setChecked(key == self.selected_media_type)
+            button.clicked.connect(lambda _, media=key: self._set_media_type(media))
+            self.media_type_buttons[key] = button
             type_row.addWidget(button)
+
+        type_row.addStretch()
         layout.addLayout(type_row)
 
         file_row = QHBoxLayout()
@@ -135,7 +139,9 @@ class AnalyzeTab(QWidget):
         file_row.addWidget(browse_btn)
         layout.addLayout(file_row)
 
-        self.support_label = self._create_info_label(self.media_type_supports[self.selected_media_type])
+        self.support_label = self._create_info_label(
+            self.media_type_supports[self.selected_media_type]
+        )
         layout.addWidget(self.support_label)
 
         self._set_media_type(self.selected_media_type)
@@ -263,15 +269,18 @@ class AnalyzeTab(QWidget):
     def _set_media_type(self, media_type: str) -> None:
         self.selected_media_type = media_type
         for key, button in self.media_type_buttons.items():
+            button.blockSignals(True)
             button.setChecked(key == media_type)
-            if key == media_type:
-                button.setStyleSheet(
-                    "background-color: #1E88E5; color: white; border: 1px solid #1E88E5;"
-                )
-            else:
-                button.setStyleSheet("")
-        self.file_input.setPlaceholderText(self.media_type_placeholders[media_type])
-        self.support_label.setText(self.media_type_supports[media_type])
+            button.blockSignals(False)
+
+        if hasattr(self, "file_input"):
+            placeholder = self.media_type_placeholders.get(media_type)
+            if placeholder:
+                self.file_input.setPlaceholderText(placeholder)
+
+        support_text = self.media_type_supports.get(media_type)
+        if support_text and hasattr(self, "support_label"):
+            self.support_label.setText(support_text)
 
     def _create_info_label(self, text: str) -> QLabel:
         label = QLabel(text)
