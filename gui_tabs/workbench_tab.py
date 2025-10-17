@@ -29,6 +29,8 @@ from PyQt5.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QScrollArea,
+    QSplitter,
     QTabWidget,
     QTextEdit,
     QVBoxLayout,
@@ -150,12 +152,23 @@ class WorkbenchTab(QWidget):
         header_layout.addWidget(self.file_label, 1)
         root_layout.addLayout(header_layout)
 
-        content_layout = QHBoxLayout()
-        content_layout.setSpacing(16)
+        splitter = QSplitter(Qt.Horizontal)
 
-        content_layout.addLayout(self._build_left_column(), 4)
-        content_layout.addLayout(self._build_right_column(), 6)
-        root_layout.addLayout(content_layout, 1)
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_container = QWidget()
+        left_container.setLayout(self._build_left_column())
+        left_scroll.setWidget(left_container)
+        splitter.addWidget(left_scroll)
+
+        right_container = QWidget()
+        right_container.setLayout(self._build_right_column())
+        splitter.addWidget(right_container)
+
+        splitter.setStretchFactor(0, 45)
+        splitter.setStretchFactor(1, 55)
+
+        root_layout.addWidget(splitter, 1)
 
     def _register_action_buttons(self, buttons: Iterable[QPushButton]) -> None:
         for button in buttons:
