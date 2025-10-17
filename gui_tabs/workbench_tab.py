@@ -35,6 +35,8 @@ from PyQt5.QtWidgets import (
     QComboBox,
 )
 
+from utils.tab_utils import FullTextTabBar
+
 
 ASCII_PRINTABLE = set(range(32, 127)) | {9, 10, 13}
 
@@ -169,10 +171,13 @@ class WorkbenchTab(QWidget):
         outer_layout.setSpacing(12)
 
         self.tool_tabs = QTabWidget()
+        self.tool_tabs.setTabBar(FullTextTabBar(minimum_width=150, extra_padding=56))
+        self.tool_tabs.setUsesScrollButtons(True)
         self.tool_tabs.addTab(self._build_encoding_tab(), "Encoding")
         self.tool_tabs.addTab(self._build_compression_tab(), "Compression")
         self.tool_tabs.addTab(self._build_crypto_tab(), "Cryptography")
         self.tool_tabs.addTab(self._build_neutralize_tab(), "Neutralize")
+        self._apply_tab_tooltips(self.tool_tabs)
 
         outer_layout.addWidget(self.tool_tabs)
 
@@ -188,6 +193,13 @@ class WorkbenchTab(QWidget):
         outer_layout.addLayout(action_row)
 
         return group
+
+    def _apply_tab_tooltips(self, tab_widget: QTabWidget) -> None:
+        """Expose the full text of each tab via tooltips."""
+
+        for index in range(tab_widget.count()):
+            label = tab_widget.tabText(index).strip()
+            tab_widget.setTabToolTip(index, label)
 
     def _build_history_group(self) -> QGroupBox:
         group = QGroupBox("ประวัติการทำงาน")
