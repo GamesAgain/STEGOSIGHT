@@ -88,8 +88,8 @@ class AnalyzeTab(QWidget):
         left_layout.setSpacing(16)
         left_layout.addWidget(self._create_file_group())
         left_layout.addWidget(self._create_settings_group())
-        left_layout.addStretch()
         left_layout.addWidget(self._create_action_section())
+        left_layout.addStretch()
         top_layout.addWidget(left_widget, 4)
 
         right_widget = QWidget()
