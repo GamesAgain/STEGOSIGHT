@@ -20,6 +20,7 @@ from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import (
     QFileDialog,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -52,6 +53,56 @@ class HistoryEntry:
 
     description: str
     size: int
+
+
+class ResponsiveButtonGrid(QWidget):
+    """Lay buttons in a responsive grid that adapts to the available width."""
+
+    def __init__(
+        self,
+        buttons: Iterable[QPushButton],
+        parent: Optional[QWidget] = None,
+        *,
+        max_columns: int = 2,
+        minimum_cell_width: int = 180,
+        spacing: int = 12,
+    ) -> None:
+        super().__init__(parent)
+        self._buttons = list(buttons)
+        self._max_columns = max(1, max_columns)
+        self._minimum_cell_width = max(1, minimum_cell_width)
+        self._layout = QGridLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setHorizontalSpacing(spacing)
+        self._layout.setVerticalSpacing(spacing)
+        self._current_columns = 0
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self._update_layout(force=True)
+
+    def resizeEvent(self, event):  # type: ignore[override]
+        super().resizeEvent(event)
+        self._update_layout()
+
+    def _update_layout(self, force: bool = False) -> None:
+        available = max(self.width(), self._minimum_cell_width)
+        columns = max(1, min(self._max_columns, available // self._minimum_cell_width))
+        if not force and columns == self._current_columns:
+            return
+
+        while self._layout.count():
+            item = self._layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(self)
+
+        self._current_columns = columns
+        for index, button in enumerate(self._buttons):
+            row = index // columns
+            column = index % columns
+            self._layout.addWidget(button, row, column)
+
+        for column in range(self._max_columns):
+            self._layout.setColumnStretch(column, 1 if column < columns else 0)
 
 
 class WorkbenchTab(QWidget):
@@ -270,27 +321,34 @@ class WorkbenchTab(QWidget):
         info.setWordWrap(True)
         layout.addWidget(info)
 
-        row1 = QHBoxLayout()
-        row1.setSpacing(12)
         self.base64_decode_btn = QPushButton("Base64 Decode")
         self.base64_decode_btn.clicked.connect(lambda: self._apply_transform("Base64 Decode"))
         self.base64_encode_btn = QPushButton("Base64 Encode")
         self.base64_encode_btn.clicked.connect(lambda: self._apply_transform("Base64 Encode"))
-        self._register_action_buttons([self.base64_decode_btn, self.base64_encode_btn])
-        row1.addWidget(self.base64_decode_btn)
-        row1.addWidget(self.base64_encode_btn)
-        layout.addLayout(row1)
-
-        row2 = QHBoxLayout()
-        row2.setSpacing(12)
         self.hex_decode_btn = QPushButton("Hex Decode")
         self.hex_decode_btn.clicked.connect(lambda: self._apply_transform("Hex Decode"))
         self.hex_encode_btn = QPushButton("Hex Encode")
         self.hex_encode_btn.clicked.connect(lambda: self._apply_transform("Hex Encode"))
-        self._register_action_buttons([self.hex_decode_btn, self.hex_encode_btn])
-        row2.addWidget(self.hex_decode_btn)
-        row2.addWidget(self.hex_encode_btn)
-        layout.addLayout(row2)
+        self._register_action_buttons(
+            [
+                self.base64_decode_btn,
+                self.base64_encode_btn,
+                self.hex_decode_btn,
+                self.hex_encode_btn,
+            ]
+        )
+
+        button_grid = ResponsiveButtonGrid(
+            [
+                self.base64_decode_btn,
+                self.base64_encode_btn,
+                self.hex_decode_btn,
+                self.hex_encode_btn,
+            ],
+            max_columns=2,
+            minimum_cell_width=180,
+        )
+        layout.addWidget(button_grid)
 
         layout.addStretch(1)
         return widget
@@ -305,27 +363,34 @@ class WorkbenchTab(QWidget):
         info.setWordWrap(True)
         layout.addWidget(info)
 
-        row1 = QHBoxLayout()
-        row1.setSpacing(12)
         self.zlib_decomp_btn = QPushButton("Zlib Decompress")
         self.zlib_decomp_btn.clicked.connect(lambda: self._apply_transform("Zlib Decompress"))
         self.zlib_comp_btn = QPushButton("Zlib Compress")
         self.zlib_comp_btn.clicked.connect(lambda: self._apply_transform("Zlib Compress"))
-        self._register_action_buttons([self.zlib_decomp_btn, self.zlib_comp_btn])
-        row1.addWidget(self.zlib_decomp_btn)
-        row1.addWidget(self.zlib_comp_btn)
-        layout.addLayout(row1)
-
-        row2 = QHBoxLayout()
-        row2.setSpacing(12)
         self.gzip_decomp_btn = QPushButton("Gzip Decompress")
         self.gzip_decomp_btn.clicked.connect(lambda: self._apply_transform("Gzip Decompress"))
         self.gzip_comp_btn = QPushButton("Gzip Compress")
         self.gzip_comp_btn.clicked.connect(lambda: self._apply_transform("Gzip Compress"))
-        self._register_action_buttons([self.gzip_decomp_btn, self.gzip_comp_btn])
-        row2.addWidget(self.gzip_decomp_btn)
-        row2.addWidget(self.gzip_comp_btn)
-        layout.addLayout(row2)
+        self._register_action_buttons(
+            [
+                self.zlib_decomp_btn,
+                self.zlib_comp_btn,
+                self.gzip_decomp_btn,
+                self.gzip_comp_btn,
+            ]
+        )
+
+        button_grid = ResponsiveButtonGrid(
+            [
+                self.zlib_decomp_btn,
+                self.zlib_comp_btn,
+                self.gzip_decomp_btn,
+                self.gzip_comp_btn,
+            ],
+            max_columns=2,
+            minimum_cell_width=180,
+        )
+        layout.addWidget(button_grid)
 
         layout.addStretch(1)
         return widget
