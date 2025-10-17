@@ -10,6 +10,8 @@ __all__ = [
     "JPEGDCTSteganography",
     "LSBSteganography",
     "PVDSteganography",
+    "AudioSteganography",
+    "VideoSteganography",
     "APPEND_MARKER",
     "APPEND_VERSION",
     "AppendedPayload",
@@ -35,6 +37,8 @@ if TYPE_CHECKING:  # pragma: no cover - only for typing
     from .jpeg_dct import JPEGDCTSteganography
     from .lsb import LSBSteganography
     from .pvd import PVDSteganography
+    from .audio import AudioSteganography
+    from .video import VideoSteganography
     from .png_chunks import (
         CUSTOM_CHUNK_TYPE,
         embed_data_in_chunk,
@@ -51,6 +55,10 @@ def __getattr__(name: str) -> Any:
         return import_module(".lsb", __name__).LSBSteganography
     if name == "PVDSteganography":
         return import_module(".pvd", __name__).PVDSteganography
+    if name == "AudioSteganography":
+        return import_module(".audio", __name__).AudioSteganography
+    if name == "VideoSteganography":
+        return import_module(".video", __name__).VideoSteganography
     if name in {
         "APPEND_MARKER",
         "APPEND_VERSION",
