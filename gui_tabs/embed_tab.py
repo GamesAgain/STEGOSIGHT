@@ -38,7 +38,7 @@ class EmbedTab(QWidget):
 
         self.cover_path: Optional[Path] = None
         self.secret_path: Optional[Path] = None
-        self.selected_method = "adaptive"
+        self.selected_method = "content_adaptive"
         self.selected_media_type = "image"
         self._current_secret_data: Optional[bytes] = None
         self._current_embed_params: Dict[str, object] = {}
@@ -56,14 +56,14 @@ class EmbedTab(QWidget):
             for method_key in methods
         }
         self.media_type_supports = {
-            "image": "รองรับ: PNG, JPEG, JPG, BMP, TIFF",
-            "audio": "รองรับ: WAV, MP3, FLAC, AAC, OGG, WMA",
+            "image": "รองรับ: PNG, JPEG, JPG, BMP",
+            "audio": "รองรับ: WAV, MP3, FLAC",
             "video": "รองรับ: AVI, MP4, MKV, MOV, OGG, WMA, AAC",
         }
         self.media_type_filters = {
-            "image": "ไฟล์ภาพ (*.png *.jpg *.jpeg *.bmp *.tiff);;All Files (*.*)",
-            "audio": "ไฟล์เสียง (*.wav *.mp3 *.flac *.aac *.ogg *.wma);;All Files (*.*)",
-            "video": "ไฟล์วิดีโอ (*.avi *.mp4 *.mkv *.mov *.ogv *.wmv *.m4v *.ogg *.wma *.aac);;All Files (*.*)",
+            "image": "ไฟล์ภาพ (*.png *.jpg *.jpeg *.bmp);;All Files (*.*)",
+            "audio": "ไฟล์เสียง (*.wav *.mp3 *.flac);;All Files (*.*)",
+            "video": "ไฟล์วิดีโอ (*.avi *.mp4 *.mkv *.mov *.ogg *.wma *.aac);;All Files (*.*)",
         }
         self.media_type_placeholders = {
             "image": "เลือกไฟล์ภาพที่ต้องการใช้เป็นต้นฉบับ...",
@@ -79,45 +79,53 @@ class EmbedTab(QWidget):
     def _build_method_definitions(self) -> Dict[str, Dict[str, Dict[str, str]]]:
         return {
             "image": {
-                "adaptive": {
-                    "title": "✨ Adaptive (แนะนำ)",
-                    "desc": "วิเคราะห์ภาพและเลือกบริเวณที่แนบเนียนอัตโนมัติ",
+                "content_adaptive": {
+                    "title": "✨ Content-Adaptive (แนะนำ)",
+                    "desc": "วิเคราะห์ขอบและพื้นผิวเพื่อเลือกพื้นที่ฝังที่แนบเนียน",
                 },
                 "lsb": {
                     "title": "🔹 LSB Matching",
-                    "desc": "เหมาะกับภาพ PNG, BMP ที่ไม่มีการบีบอัด",
+                    "desc": "ปรับ LSB เพื่อลดความผิดปกติทางสถิติ (เหมาะกับ PNG/BMP)",
                 },
                 "pvd": {
-                    "title": "🔸 PVD",
-                    "desc": "ใช้ความต่างของพิกเซล ซ่อนข้อมูลได้มาก",
+                    "title": "🔸 Pixel Value Differencing",
+                    "desc": "กำหนดจำนวนบิตจากความต่างพิกเซล เพิ่มปริมาณข้อมูล",
                 },
                 "dct": {
-                    "title": "📊 DCT",
-                    "desc": "สำหรับ JPEG ทนทานต่อการบีบอัดซ้ำ",
+                    "title": "📊 Discrete Cosine Transform",
+                    "desc": "ฝังข้อมูลในสัมประสิทธิ์ DCT สำหรับ JPEG ทนการบีบอัดซ้ำ",
                 },
                 "append": {
                     "title": "📎 ต่อท้ายไฟล์ (Tail Append)",
-                    "desc": "พ่วง payload ต่อท้ายไฟล์ (เหมาะกับ PNG/BMP)",
+                    "desc": "พ่วง payload ต่อท้ายไฟล์ต้นฉบับ (เหมาะกับ PNG/BMP)",
                 },
             },
             "audio": {
                 "audio_adaptive": {
                     "title": "✨ Adaptive Audio",
-                    "desc": "วิเคราะห์ไดนามิกของเสียงและเลือกตำแหน่งฝังที่แนบเนียน",
+                    "desc": "วิเคราะห์ไดนามิกเสียง เลือกตำแหน่งฝังที่แนบเนียน",
                 },
                 "audio_lsb": {
                     "title": "🎧 LSB ในสัญญาณเสียง",
-                    "desc": "ปรับค่า LSB ของตัวอย่างเสียง (เหมาะกับ WAV/FLAC แบบไม่บีบอัด)",
+                    "desc": "ซ่อนข้อมูลด้วย LSB สำหรับ WAV/MP3/FLAC",
+                },
+                "audio_metadata": {
+                    "title": "🏷️ Metadata Tagging",
+                    "desc": "ฝังข้อมูลใน Meta Tag (ID3/Tag สำหรับ MP3/FLAC)",
                 },
             },
             "video": {
                 "video_adaptive": {
                     "title": "✨ Adaptive Video",
-                    "desc": "ประเมินเฟรมวิดีโอและเลือกพื้นที่ฝังที่ยากต่อการสังเกต",
+                    "desc": "ประเมินเฟรมวิดีโอและเลือกพื้นที่ที่ยากต่อการสังเกต",
                 },
                 "video_lsb": {
                     "title": "🎞️ Frame LSB",
-                    "desc": "ซ่อนข้อมูลทีละเฟรมด้วย LSB (รองรับ MP4/AVI/MKV)",
+                    "desc": "ซ่อนข้อมูลทีละเฟรมด้วย LSB (รองรับ MP4/AVI/MKV/MOV)",
+                },
+                "video_metadata": {
+                    "title": "🏷️ Metadata Tagging",
+                    "desc": "ฝังข้อมูลในเมทาดาทาของไฟล์วิดีโอ (MP4/MKV/MOV)",
                 },
             },
         }
@@ -134,6 +142,7 @@ class EmbedTab(QWidget):
         left_layout.addWidget(self._create_cover_file_group())
         left_layout.addWidget(self._create_secret_data_group())
         left_layout.addWidget(self._create_method_group())
+        left_layout.addWidget(self._create_capability_summary_group())
         left_layout.addWidget(self._create_encryption_group())
         left_layout.addWidget(self._create_auto_analysis_group())
         left_layout.addStretch()
@@ -159,6 +168,24 @@ class EmbedTab(QWidget):
     def _create_cover_file_group(self) -> QGroupBox:
         group = QGroupBox("1. เลือกไฟล์ต้นฉบับ (Cover File)")
         layout = QVBoxLayout(group)
+
+        type_row = QHBoxLayout()
+        type_row.addWidget(QLabel("เลือกประเภทไฟล์ต้นฉบับ:"))
+        for key, label in (
+            ("image", "🖼️ ไฟล์ภาพ"),
+            ("audio", "🎧 ไฟล์เสียง"),
+            ("video", "🎞️ ไฟล์วิดีโอ"),
+        ):
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setObjectName("toggleButton")
+            btn.setChecked(key == self.selected_media_type)
+            btn.clicked.connect(lambda _, media=key: self._set_media_type(media))
+            self.media_type_buttons[key] = btn
+            type_row.addWidget(btn)
+
+        type_row.addStretch()
+        layout.addLayout(type_row)
 
         file_row = QHBoxLayout()
         self.cover_file_input = QLineEdit()
@@ -232,25 +259,6 @@ class EmbedTab(QWidget):
         group = QGroupBox("3. เลือกวิธีการซ่อนข้อมูล")
         layout = QVBoxLayout(group)
         layout.setSpacing(12)
-
-        type_row = QHBoxLayout()
-        type_row.setSpacing(8)
-        type_row.addWidget(QLabel("เลือกประเภทไฟล์ต้นฉบับ:"))
-
-        for key, label in (
-            ("image", "🖼️ ไฟล์ภาพ"),
-            ("audio", "🎧 ไฟล์เสียง"),
-            ("video", "🎞️ ไฟล์วิดีโอ"),
-        ):
-            btn = QPushButton(label)
-            btn.setCheckable(True)
-            btn.setObjectName("toggleButton")
-            btn.clicked.connect(lambda _, media=key: self._set_media_type(media))
-            self.media_type_buttons[key] = btn
-            type_row.addWidget(btn)
-
-        type_row.addStretch()
-        layout.addLayout(type_row)
 
         self.method_container = QWidget()
         self.method_container_layout = QVBoxLayout(self.method_container)
@@ -388,6 +396,45 @@ class EmbedTab(QWidget):
     def _create_info_panel(self, labels):
         panel = InfoPanel(labels)
         return panel, panel.value_labels
+
+    def _create_capability_summary_group(self) -> QGroupBox:
+        group = QGroupBox("ขอบเขตความสามารถในการซ่อนข้อมูล")
+        layout = QVBoxLayout(group)
+
+        summary_label = QLabel(
+            """
+            <b>การซ่อนข้อความในสื่อมัลติมีเดีย</b>
+            <ul>
+                <li>ไฟล์ภาพ: PNG, JPEG, JPG, BMP</li>
+                <li>ไฟล์เสียง: WAV, MP3, FLAC</li>
+                <li>ไฟล์วิดีโอ: AVI, MP4, MKV, MOV, OGG, WMA, AAC</li>
+            </ul>
+            <b>การซ่อนไฟล์ต่อท้ายไฟล์ (File Appending)</b>
+            <ul>
+                <li>Payload: DOCX, XLSX, PPTX, PDF, ZIP, MP3, MP4, EXE</li>
+                <li>Carrier: PNG, BMP</li>
+            </ul>
+            <b>การซ่อนข้อมูลในเมทาดาทา</b>
+            <ul>
+                <li>รองรับไฟล์เสียง/วิดีโอ: MP3, MP4, M4A, WAV, AVI, MKV, FLV, MOV, OGG, WMA, AAC</li>
+            </ul>
+            <b>เทคนิคการซ่อนข้อมูล</b>
+            <ul>
+                <li>LSB Matching, Pixel Value Differencing (PVD)</li>
+                <li>Content-Adaptive Embedding</li>
+                <li>Discrete Cosine Transform (DCT)</li>
+            </ul>
+            <b>การถอดรหัสข้อมูล</b>
+            <ul>
+                <li>ดึงข้อมูลที่ซ่อนด้วย STEGOSIGHT ได้เต็มรูปแบบ</li>
+                <li>รองรับ Blind Extraction สำหรับเทคนิคพื้นฐาน เช่น LSB</li>
+            </ul>
+            """
+        )
+        summary_label.setWordWrap(True)
+        summary_label.setTextFormat(Qt.RichText)
+        layout.addWidget(summary_label)
+        return group
 
     # ------------------------------------------------------------------
     # Interactions
