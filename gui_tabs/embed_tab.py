@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap
@@ -39,17 +39,89 @@ class EmbedTab(QWidget):
         self.cover_path: Optional[Path] = None
         self.secret_path: Optional[Path] = None
         self.selected_method = "adaptive"
+        self.selected_media_type = "image"
         self._current_secret_data: Optional[bytes] = None
         self._current_embed_params: Dict[str, object] = {}
         self._current_temp_path: Optional[Path] = None
         self._last_risk: Optional[Dict[str, object]] = None
         self._last_result: Optional[Dict[str, object]] = None
 
+        self.method_definitions = self._build_method_definitions()
+        self.method_cards: List[MethodCard] = []
+        self.method_card_map: Dict[MethodCard, str] = {}
+        self.media_type_buttons: Dict[str, QPushButton] = {}
+        self.method_to_media: Dict[str, str] = {
+            method_key: media_type
+            for media_type, methods in self.method_definitions.items()
+            for method_key in methods
+        }
+        self.media_type_supports = {
+            "image": "รองรับ: PNG, JPEG, JPG, BMP, TIFF",
+            "audio": "รองรับ: WAV, MP3, FLAC, AAC, OGG, WMA",
+            "video": "รองรับ: AVI, MP4, MKV, MOV, OGG, WMA, AAC",
+        }
+        self.media_type_filters = {
+            "image": "ไฟล์ภาพ (*.png *.jpg *.jpeg *.bmp *.tiff);;All Files (*.*)",
+            "audio": "ไฟล์เสียง (*.wav *.mp3 *.flac *.aac *.ogg *.wma);;All Files (*.*)",
+            "video": "ไฟล์วิดีโอ (*.avi *.mp4 *.mkv *.mov *.ogv *.wmv *.m4v *.ogg *.wma *.aac);;All Files (*.*)",
+        }
+        self.media_type_placeholders = {
+            "image": "เลือกไฟล์ภาพที่ต้องการใช้เป็นต้นฉบับ...",
+            "audio": "เลือกไฟล์เสียงที่ต้องการใช้เป็นต้นฉบับ...",
+            "video": "เลือกไฟล์วิดีโอที่ต้องการใช้เป็นต้นฉบับ...",
+        }
+
         self._init_ui()
 
     # ------------------------------------------------------------------
     # UI construction helpers
     # ------------------------------------------------------------------
+    def _build_method_definitions(self) -> Dict[str, Dict[str, Dict[str, str]]]:
+        return {
+            "image": {
+                "adaptive": {
+                    "title": "✨ Adaptive (แนะนำ)",
+                    "desc": "วิเคราะห์ภาพและเลือกบริเวณที่แนบเนียนอัตโนมัติ",
+                },
+                "lsb": {
+                    "title": "🔹 LSB Matching",
+                    "desc": "เหมาะกับภาพ PNG, BMP ที่ไม่มีการบีบอัด",
+                },
+                "pvd": {
+                    "title": "🔸 PVD",
+                    "desc": "ใช้ความต่างของพิกเซล ซ่อนข้อมูลได้มาก",
+                },
+                "dct": {
+                    "title": "📊 DCT",
+                    "desc": "สำหรับ JPEG ทนทานต่อการบีบอัดซ้ำ",
+                },
+                "append": {
+                    "title": "📎 ต่อท้ายไฟล์ (Tail Append)",
+                    "desc": "พ่วง payload ต่อท้ายไฟล์ (เหมาะกับ PNG/BMP)",
+                },
+            },
+            "audio": {
+                "audio_adaptive": {
+                    "title": "✨ Adaptive Audio",
+                    "desc": "วิเคราะห์ไดนามิกของเสียงและเลือกตำแหน่งฝังที่แนบเนียน",
+                },
+                "audio_lsb": {
+                    "title": "🎧 LSB ในสัญญาณเสียง",
+                    "desc": "ปรับค่า LSB ของตัวอย่างเสียง (เหมาะกับ WAV/FLAC แบบไม่บีบอัด)",
+                },
+            },
+            "video": {
+                "video_adaptive": {
+                    "title": "✨ Adaptive Video",
+                    "desc": "ประเมินเฟรมวิดีโอและเลือกพื้นที่ฝังที่ยากต่อการสังเกต",
+                },
+                "video_lsb": {
+                    "title": "🎞️ Frame LSB",
+                    "desc": "ซ่อนข้อมูลทีละเฟรมด้วย LSB (รองรับ MP4/AVI/MKV)",
+                },
+            },
+        }
+
     def _init_ui(self) -> None:
         main_layout = QVBoxLayout(self)
         splitter = QSplitter(Qt.Horizontal)
@@ -90,7 +162,10 @@ class EmbedTab(QWidget):
 
         file_row = QHBoxLayout()
         self.cover_file_input = QLineEdit()
-        self.cover_file_input.setPlaceholderText("เลือกไฟล์ภาพ, เสียง, หรือวิดีโอ...")
+        placeholder = self.media_type_placeholders.get(
+            self.selected_media_type, "เลือกไฟล์ภาพ, เสียง, หรือวิดีโอ..."
+        )
+        self.cover_file_input.setPlaceholderText(placeholder)
         self.cover_file_input.setReadOnly(True)
         browse_btn = QPushButton("เลือกไฟล์")
         browse_btn.clicked.connect(self._browse_cover_file)
@@ -98,7 +173,10 @@ class EmbedTab(QWidget):
         file_row.addWidget(browse_btn)
         layout.addLayout(file_row)
 
-        self.cover_file_info = QLabel("รองรับ: PNG, JPEG, BMP, WAV, MP4, etc.")
+        info_text = self.media_type_supports.get(
+            self.selected_media_type, "รองรับ: PNG, JPEG, BMP, WAV, MP4"
+        )
+        self.cover_file_info = QLabel(info_text)
         self.cover_file_info.setObjectName("infoBox")
         self.cover_file_info.setWordWrap(True)
         layout.addWidget(self.cover_file_info)
@@ -152,49 +230,101 @@ class EmbedTab(QWidget):
 
     def _create_method_group(self) -> QGroupBox:
         group = QGroupBox("3. เลือกวิธีการซ่อนข้อมูล")
-        grid = QHBoxLayout(group)
+        layout = QVBoxLayout(group)
+        layout.setSpacing(12)
 
-        methods: Dict[str, Dict[str, str]] = {
-            "adaptive": {
-                "title": "✨ Adaptive (แนะนำ)",
-                "desc": "วิเคราะห์และเลือกบริเวณที่เหมาะสมอัตโนมัติ",
-            },
-            "lsb": {
-                "title": "🔹 LSB Matching",
-                "desc": "เหมาะกับภาพ PNG, BMP ที่ไม่มีการบีบอัด",
-            },
-            "pvd": {
-                "title": "🔸 PVD",
-                "desc": "ใช้ความต่างของพิกเซล ซ่อนข้อมูลได้มาก",
-            },
-            "dct": {
-                "title": "📊 DCT",
-                "desc": "สำหรับ JPEG ทนทานต่อการบีบอัดซ้ำ",
-            },
-            "append": {
-                "title": "📎 ต่อท้ายไฟล์ (Tail Append)",
-                "desc": "พ่วง payload ต่อท้ายไฟล์ (เหมาะกับ PNG/BMP)",
-            },
-        }
+        type_row = QHBoxLayout()
+        type_row.setSpacing(8)
+        type_row.addWidget(QLabel("เลือกประเภทไฟล์ต้นฉบับ:"))
 
-        wrapper = QWidget()
-        wrapper_layout = QVBoxLayout(wrapper)
-        wrapper_layout.setContentsMargins(0, 0, 0, 0)
-        wrapper_layout.setSpacing(10)
+        for key, label in (
+            ("image", "🖼️ ไฟล์ภาพ"),
+            ("audio", "🎧 ไฟล์เสียง"),
+            ("video", "🎞️ ไฟล์วิดีโอ"),
+        ):
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setObjectName("toggleButton")
+            btn.clicked.connect(lambda _, media=key: self._set_media_type(media))
+            self.media_type_buttons[key] = btn
+            type_row.addWidget(btn)
 
+        type_row.addStretch()
+        layout.addLayout(type_row)
+
+        self.method_container = QWidget()
+        self.method_container_layout = QVBoxLayout(self.method_container)
+        self.method_container_layout.setContentsMargins(0, 0, 0, 0)
+        self.method_container_layout.setSpacing(10)
+        layout.addWidget(self.method_container)
+
+        self._set_media_type(self.selected_media_type)
+        return group
+
+    def _set_media_type(self, media_type: str, *, keep_selection: Optional[str] = None) -> None:
+        if media_type not in self.method_definitions:
+            return
+
+        self.selected_media_type = media_type
+        for key, button in self.media_type_buttons.items():
+            button.blockSignals(True)
+            button.setChecked(key == media_type)
+            button.blockSignals(False)
+
+        placeholder = self.media_type_placeholders.get(media_type)
+        if placeholder:
+            self.cover_file_input.setPlaceholderText(placeholder)
+
+        info_text = self.media_type_supports.get(media_type)
+        if info_text:
+            self.cover_file_info.setText(info_text)
+
+        self._populate_method_cards(media_type, keep_selection=keep_selection)
+
+    def _populate_method_cards(
+        self, media_type: str, *, keep_selection: Optional[str] = None
+    ) -> None:
+        if not hasattr(self, "method_container_layout"):
+            return
+
+        while self.method_container_layout.count():
+            item = self.method_container_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        methods = self.method_definitions.get(media_type, {})
         self.method_cards = []
-        self.method_card_map: Dict[MethodCard, str] = {}
+        self.method_card_map = {}
+
         for key, meta in methods.items():
             card = MethodCard(meta["title"], meta["desc"])
-            card.clicked.connect(lambda c=card: self._select_method_card(c))
-            wrapper_layout.addWidget(card)
+            card.clicked.connect(lambda _, c=card: self._select_method_card(c))
+            self.method_container_layout.addWidget(card)
             self.method_cards.append(card)
             self.method_card_map[card] = key
 
-        wrapper_layout.addStretch()
-        grid.addWidget(wrapper)
-        self.method_cards[0].setSelected(True)
-        return group
+        self.method_container_layout.addStretch()
+
+        if not methods:
+            self.selected_method = ""
+            return
+
+        if keep_selection and keep_selection in methods:
+            target = keep_selection
+        elif self.selected_method in methods:
+            target = self.selected_method
+        else:
+            target = next(iter(methods))
+
+        self._update_card_selection(target)
+
+    def _update_card_selection(self, method_key: str) -> None:
+        for card in self.method_cards:
+            selected = self.method_card_map.get(card) == method_key
+            card.setSelected(selected)
+        if method_key in self.method_to_media:
+            self.selected_method = method_key
 
     def _create_encryption_group(self) -> QGroupBox:
         group = QGroupBox("4. การเข้ารหัส (Encryption)")
@@ -270,17 +400,47 @@ class EmbedTab(QWidget):
     def _select_method_card(self, card: MethodCard) -> None:
         for item in self.method_cards:
             item.setSelected(item is card)
-        self.selected_method = self.method_card_map.get(card, "adaptive")
+        method_key = self.method_card_map.get(card)
+        if method_key:
+            self.selected_method = method_key
+
+    def _get_cover_file_filter(self) -> str:
+        return self.media_type_filters.get(self.selected_media_type, "All Files (*.*)")
+
+    def _infer_media_type_from_suffix(self, suffix: str) -> Optional[str]:
+        suffix = suffix.lower()
+        image_exts = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif"}
+        audio_exts = {".wav", ".mp3", ".flac", ".aac", ".ogg", ".wma"}
+        video_exts = {
+            ".avi",
+            ".mp4",
+            ".mkv",
+            ".mov",
+            ".ogv",
+            ".wmv",
+            ".m4v",
+        }
+
+        if suffix in image_exts:
+            return "image"
+        if suffix in audio_exts:
+            return "audio"
+        if suffix in video_exts or suffix in {".mpg", ".mpeg"}:
+            return "video"
+        return None
 
     def _browse_cover_file(self) -> None:
         filename, _ = QFileDialog.getOpenFileName(
             self,
             "เลือกไฟล์ต้นฉบับ",
             "",
-            "All Supported (*.png *.jpg *.jpeg *.bmp *.wav *.mp4);;All Files (*.*)",
+            self._get_cover_file_filter(),
         )
         if filename:
             self.cover_path = Path(filename)
+            inferred = self._infer_media_type_from_suffix(self.cover_path.suffix)
+            if inferred and inferred != self.selected_media_type:
+                self._set_media_type(inferred)
             self.cover_file_input.setText(filename)
             self._update_cover_preview()
 
@@ -364,8 +524,9 @@ class EmbedTab(QWidget):
             "cover_path": str(self.cover_path),
             "password": password,
             "method": self.selected_method,
+            "media_type": self.selected_media_type,
             "options": {},
-            "auto_analyze": True,
+            "auto_analyze": self.auto_analyze_cb.isChecked(),
             "auto_neutralize": self.auto_neutralize_cb.isChecked(),
         }
 
@@ -402,6 +563,10 @@ class EmbedTab(QWidget):
         risk = result.get("risk_score") if isinstance(result.get("risk_score"), dict) else None
         self._last_risk = risk
 
+        media_type = result.get("media_type")
+        if isinstance(media_type, str):
+            self._current_embed_params["media_type"] = media_type
+
         method_used = result.get("method", self._current_embed_params.get("method", self.selected_method))
         self._current_embed_params["method"] = method_used
         self._current_embed_params["options"] = result.get("options") or self._current_embed_params.get("options", {})
@@ -417,12 +582,15 @@ class EmbedTab(QWidget):
         self._set_busy(False)
 
     def _update_method_selection(self, method_key: str) -> None:
-        if not getattr(self, "method_cards", None):
+        target_media = self.method_to_media.get(method_key)
+        if target_media and target_media != self.selected_media_type:
+            self._set_media_type(target_media, keep_selection=method_key)
             return
-        for card in self.method_cards:
-            selected = self.method_card_map.get(card) == method_key
-            card.setSelected(selected)
-        self.selected_method = method_key
+
+        if target_media is None:
+            return
+
+        self._update_card_selection(method_key)
 
     def _show_risk_confirmation(
         self, temp_path: Path, risk: Optional[Dict[str, object]], result: Dict[str, object]
@@ -514,6 +682,9 @@ class EmbedTab(QWidget):
         options = dict(params.get("options") or {})
         current_method = params.get("method", self.selected_method)
         improved = False
+
+        if current_method in {"audio_adaptive", "audio_lsb", "video_adaptive", "video_lsb"}:
+            return False
 
         recommendation = result.get("recommendation")
         if not recommendation:
