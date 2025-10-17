@@ -142,7 +142,6 @@ class EmbedTab(QWidget):
         left_layout.addWidget(self._create_cover_file_group())
         left_layout.addWidget(self._create_secret_data_group())
         left_layout.addWidget(self._create_method_group())
-        left_layout.addWidget(self._create_capability_summary_group())
         left_layout.addWidget(self._create_encryption_group())
         left_layout.addWidget(self._create_auto_analysis_group())
         left_layout.addStretch()
@@ -398,45 +397,6 @@ class EmbedTab(QWidget):
     def _create_info_panel(self, labels):
         panel = InfoPanel(labels)
         return panel, panel.value_labels
-
-    def _create_capability_summary_group(self) -> QGroupBox:
-        group = QGroupBox("ขอบเขตความสามารถในการซ่อนข้อมูล")
-        layout = QVBoxLayout(group)
-
-        summary_label = QLabel(
-            """
-            <b>การซ่อนข้อความในสื่อมัลติมีเดีย</b>
-            <ul>
-                <li>ไฟล์ภาพ: PNG, JPEG, JPG, BMP</li>
-                <li>ไฟล์เสียง: WAV, MP3, FLAC</li>
-                <li>ไฟล์วิดีโอ: AVI, MP4, MKV, MOV, OGG, WMA, AAC</li>
-            </ul>
-            <b>การซ่อนไฟล์ต่อท้ายไฟล์ (File Appending)</b>
-            <ul>
-                <li>Payload: DOCX, XLSX, PPTX, PDF, ZIP, MP3, MP4, EXE</li>
-                <li>Carrier: PNG, BMP</li>
-            </ul>
-            <b>การซ่อนข้อมูลในเมทาดาทา</b>
-            <ul>
-                <li>รองรับไฟล์เสียง/วิดีโอ: MP3, MP4, M4A, WAV, AVI, MKV, FLV, MOV, OGG, WMA, AAC</li>
-            </ul>
-            <b>เทคนิคการซ่อนข้อมูล</b>
-            <ul>
-                <li>LSB Matching, Pixel Value Differencing (PVD)</li>
-                <li>Content-Adaptive Embedding</li>
-                <li>Discrete Cosine Transform (DCT)</li>
-            </ul>
-            <b>การถอดรหัสข้อมูล</b>
-            <ul>
-                <li>ดึงข้อมูลที่ซ่อนด้วย STEGOSIGHT ได้เต็มรูปแบบ</li>
-                <li>รองรับ Blind Extraction สำหรับเทคนิคพื้นฐาน เช่น LSB</li>
-            </ul>
-            """
-        )
-        summary_label.setWordWrap(True)
-        summary_label.setTextFormat(Qt.RichText)
-        layout.addWidget(summary_label)
-        return group
 
     # ------------------------------------------------------------------
     # Interactions
