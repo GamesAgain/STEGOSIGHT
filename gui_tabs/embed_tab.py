@@ -168,8 +168,10 @@ class EmbedTab(QWidget):
     def _create_cover_file_group(self) -> QGroupBox:
         group = QGroupBox("1. เลือกไฟล์ต้นฉบับ (Cover File)")
         layout = QVBoxLayout(group)
+        layout.setSpacing(12)
 
         type_row = QHBoxLayout()
+        type_row.setSpacing(8)
         type_row.addWidget(QLabel("เลือกประเภทไฟล์ต้นฉบับ:"))
         for key, label in (
             ("image", "🖼️ ไฟล์ภาพ"),
