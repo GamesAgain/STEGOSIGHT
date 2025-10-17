@@ -123,7 +123,6 @@ class AnalyzeTab(QWidget):
             self.media_type_buttons[media_type] = button
             type_row.addWidget(button)
         layout.addLayout(type_row)
-        self._set_media_type(self.selected_media_type)
 
         file_row = QHBoxLayout()
         file_row.setSpacing(8)
@@ -138,6 +137,8 @@ class AnalyzeTab(QWidget):
 
         self.support_label = self._create_info_label(self.media_type_supports[self.selected_media_type])
         layout.addWidget(self.support_label)
+
+        self._set_media_type(self.selected_media_type)
         return group
 
     def _create_settings_group(self) -> QGroupBox:
