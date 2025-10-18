@@ -8,10 +8,12 @@ import io
 import math
 import os
 import random
+import time
 import zlib
 from collections import Counter
 from dataclasses import dataclass
-from typing import Callable, Iterable, List, Optional, Tuple
+from pathlib import Path
+from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 from PIL import Image
 
@@ -192,11 +194,16 @@ class WorkbenchTab(QWidget):
         if hasattr(self, "process_btn"):
             self.process_btn.setEnabled(self._pending_data is not None)
 
+        if hasattr(self, "quick_export_btn"):
+            has_output = bool(getattr(self, "quick_output", None) and self.quick_output.toPlainText().strip())
+            self.quick_export_btn.setEnabled(has_output)
+
     def _build_left_column(self) -> QVBoxLayout:
         column = QVBoxLayout()
         column.setSpacing(16)
 
         column.addWidget(self._build_file_info_group())
+        column.addWidget(self._build_quick_tools_group())
         column.addWidget(self._build_tools_group(), 1)
 
         column.addStretch(1)
@@ -206,6 +213,7 @@ class WorkbenchTab(QWidget):
         column = QVBoxLayout()
         column.setSpacing(16)
         column.addWidget(self._build_preview_group(), 2)
+        column.addWidget(self._build_quick_output_group(), 1)
         column.addWidget(self._build_history_group(), 1)
         column.addStretch(1)
         return column
@@ -226,6 +234,35 @@ class WorkbenchTab(QWidget):
         layout.addRow("ชนิด (Magic)", self.info_magic)
         layout.addRow("Entropy (4KB)", self.info_entropy)
         layout.addRow("Printable Ratio", self.info_printable)
+        return group
+
+    def _build_quick_tools_group(self) -> QGroupBox:
+        group = QGroupBox("เครื่องมือสืบสวนอย่างรวดเร็ว")
+        layout = QVBoxLayout(group)
+        layout.setSpacing(10)
+
+        info = QLabel("เลือกเครื่องมือเพื่อสำรวจโครงสร้างไฟล์แบบรวดเร็ว")
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        tools: List[Tuple[str, str]] = [
+            ("🔢 Hex Viewer", "hex"),
+            ("📊 Byte Frequency", "byte"),
+            ("📈 Entropy Overview", "entropy"),
+            ("🔤 String Extractor", "strings"),
+            ("🔄 Data Transformer", "transform"),
+            ("📋 Metadata Inspector", "metadata"),
+        ]
+
+        self.quick_tool_buttons: List[QPushButton] = []
+        for label, key in tools:
+            button = QPushButton(label)
+            button.clicked.connect(lambda _, tool=key: self._run_quick_tool(tool))
+            self._register_action_buttons([button])
+            self.quick_tool_buttons.append(button)
+            layout.addWidget(button)
+
+        layout.addStretch(1)
         return group
 
     def _build_tools_group(self) -> QGroupBox:
@@ -319,6 +356,26 @@ class WorkbenchTab(QWidget):
         self.preview_tabs.addTab(self.preview_hex, "Hex")
         self.preview_tabs.addTab(self.preview_image, "Image")
         layout.addWidget(self.preview_tabs, 1)
+        return group
+
+    def _build_quick_output_group(self) -> QGroupBox:
+        group = QGroupBox("ผลลัพธ์เครื่องมือสืบสวน")
+        layout = QVBoxLayout(group)
+        layout.setSpacing(10)
+
+        self.quick_output = QTextEdit()
+        self.quick_output.setReadOnly(True)
+        self.quick_output.setPlaceholderText("เลือกเครื่องมือเพื่อดูผลลัพธ์ที่นี่…")
+        self.quick_output.setStyleSheet(
+            "font-family: 'JetBrains Mono', monospace; font-size: 11px;"
+        )
+        layout.addWidget(self.quick_output)
+
+        self.quick_export_btn = QPushButton("💾 Export Results")
+        self.quick_export_btn.clicked.connect(self._export_quick_output)
+        self.quick_export_btn.setEnabled(False)
+        layout.addWidget(self.quick_export_btn, alignment=Qt.AlignRight)
+
         return group
 
     def _build_encoding_tab(self) -> QWidget:
@@ -480,6 +537,7 @@ class WorkbenchTab(QWidget):
         self.file_label.setText(f"{path} (รอประมวลผล)")
         self._update_file_info()
         self._update_preview()
+        self._clear_quick_output()
         self._update_action_states()
 
     def _activate_pending_data(self) -> None:
@@ -500,6 +558,7 @@ class WorkbenchTab(QWidget):
             self.file_label.setText("(memory)")
         self._update_file_info()
         self._update_preview()
+        self._clear_quick_output()
         self._update_action_states()
 
     def _set_data(self, data: bytes, description: str) -> None:
@@ -509,6 +568,7 @@ class WorkbenchTab(QWidget):
         self._refresh_history()
         self._update_file_info()
         self._update_preview()
+        self._clear_quick_output()
         self._update_action_states()
 
     def _undo(self) -> None:
@@ -522,6 +582,7 @@ class WorkbenchTab(QWidget):
         self._refresh_history()
         self._update_file_info()
         self._update_preview()
+        self._clear_quick_output()
         self._update_action_states()
 
     def _save_output(self) -> None:
@@ -615,6 +676,264 @@ class WorkbenchTab(QWidget):
             self.preview_image.setText(
                 "⚠️ ไม่สามารถแสดงผลเป็นภาพได้\nรองรับเฉพาะข้อมูลไฟล์ภาพ เช่น PNG หรือ JPEG"
             )
+
+    # ------------------------------------------------------------------
+    # Quick tool helpers
+    # ------------------------------------------------------------------
+    def _clear_quick_output(self) -> None:
+        if hasattr(self, "quick_output"):
+            self.quick_output.clear()
+        if hasattr(self, "quick_export_btn"):
+            self.quick_export_btn.setEnabled(False)
+
+    def _export_quick_output(self) -> None:
+        if not hasattr(self, "quick_output"):
+            return
+        text = self.quick_output.toPlainText()
+        if not text.strip():
+            QMessageBox.information(self, "Workbench", "ไม่มีผลลัพธ์ให้บันทึก")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "บันทึกผลการวิเคราะห์",
+            "analysis_report.txt",
+            "Text Files (*.txt);;All Files (*.*)",
+        )
+        if not path:
+            return
+        try:
+            Path(path).write_text(text, encoding="utf-8")
+        except Exception as exc:  # pragma: no cover - GUI message
+            QMessageBox.critical(self, "Workbench", f"ไม่สามารถบันทึกผลลัพธ์ได้:\n{exc}")
+        else:
+            QMessageBox.information(self, "Workbench", f"บันทึกผลลัพธ์สำเร็จ:\n{path}")
+
+    def _run_quick_tool(self, tool: str) -> None:
+        if self._data is None:
+            if self._pending_data is not None:
+                QMessageBox.warning(self, "Workbench", "กด 'เริ่มประมวลผล' ก่อนใช้เครื่องมือ")
+            else:
+                QMessageBox.information(self, "Workbench", "ยังไม่มีข้อมูลสำหรับวิเคราะห์")
+            return
+
+        handlers: Dict[str, Tuple[str, Callable[[], str]]] = {
+            "hex": ("HEX VIEWER", self._quick_hex_viewer),
+            "byte": ("BYTE FREQUENCY", self._quick_byte_frequency),
+            "entropy": ("ENTROPY OVERVIEW", self._quick_entropy_overview),
+            "strings": ("STRING EXTRACTOR", self._quick_strings),
+            "transform": ("DATA TRANSFORMER", self._quick_transformer),
+            "metadata": ("METADATA INSPECTOR", self._quick_metadata),
+        }
+
+        title_func = handlers.get(tool)
+        if not title_func:
+            return
+
+        title, func = title_func
+        try:
+            body = func()
+        except Exception as exc:  # pragma: no cover - GUI message
+            QMessageBox.critical(self, "Workbench", f"เกิดข้อผิดพลาดในการวิเคราะห์:\n{exc}")
+            return
+
+        self._display_quick_output(title, body)
+
+    def _display_quick_output(self, title: str, body: str) -> None:
+        if not hasattr(self, "quick_output"):
+            return
+        text = f"=== {title} ===\n\n{body.strip()}"
+        self.quick_output.setPlainText(text)
+        if hasattr(self, "quick_export_btn"):
+            self.quick_export_btn.setEnabled(True)
+
+    def _quick_hex_viewer(self) -> str:
+        data = self._data or b""
+        sample = data[:1024]
+        lines = ["Offset    Hex                                             ASCII", "-" * 80]
+        for offset in range(0, len(sample), 16):
+            chunk = sample[offset : offset + 16]
+            hex_part = " ".join(f"{b:02X}" for b in chunk)
+            ascii_part = "".join(chr(b) if 32 <= b < 127 else "." for b in chunk)
+            lines.append(f"{offset:08X}  {hex_part:<48}  {ascii_part}")
+
+        lines.append("")
+        lines.append(f"Total bytes shown: {len(sample)}")
+        lines.append(f"Payload size: {len(data)} bytes")
+        return "\n".join(lines)
+
+    def _quick_byte_frequency(self) -> str:
+        data = self._data or b""
+        total = len(data)
+        if not total:
+            return "ไม่มีข้อมูล"
+
+        counter = Counter(data)
+        most_common = counter.most_common(20)
+        max_count = most_common[0][1] if most_common else 1
+
+        lines = [f"Total bytes: {total}"]
+        lines.append(f"Unique bytes: {len(counter)}")
+        lines.append("")
+        lines.append("Byte  Hex   Count    Percentage  Bar")
+        lines.append("-" * 60)
+        for byte, count in most_common:
+            pct = (count / total) * 100
+            bar = "█" * max(1, int((count / max_count) * 30))
+            char = chr(byte) if 32 <= byte < 127 else "."
+            lines.append(f"{char:3}   {byte:02X}    {count:6}   {pct:6.2f}%    {bar}")
+        if len(counter) > 20:
+            lines.append("")
+            lines.append(f"… {len(counter) - 20} additional byte values omitted")
+        return "\n".join(lines)
+
+    def _quick_entropy_overview(self) -> str:
+        data = self._data or b""
+        if not data:
+            return "ไม่มีข้อมูล"
+
+        entropy = self._shannon_entropy(data)
+        pct = (entropy / 8) * 100
+        lines = [f"Entropy: {entropy:.6f} bits/byte ({pct:.2f}% of max)"]
+        if entropy < 1.0:
+            lines.append("• Very low entropy - highly structured data")
+        elif entropy < 3.0:
+            lines.append("• Low entropy - structured data with patterns")
+        elif entropy < 5.0:
+            lines.append("• Medium entropy - mixed data")
+        elif entropy < 7.0:
+            lines.append("• High entropy - compressed or encrypted likely")
+        else:
+            lines.append("• Very high entropy - encrypted/random data suspected")
+
+        sections = 4
+        chunk_size = max(1, len(data) // sections)
+        lines.append("")
+        lines.append("Section entropy estimates:")
+        for idx in range(sections):
+            chunk = data[idx * chunk_size : (idx + 1) * chunk_size]
+            if not chunk:
+                continue
+            lines.append(f"  Section {idx + 1}: {self._shannon_entropy(chunk):.3f} bits/byte")
+
+        if entropy > 7.5:
+            lines.append("")
+            lines.append("⚠️  Warning: Very high entropy detected (possible encrypted payload)")
+        return "\n".join(lines)
+
+    def _quick_strings(self) -> str:
+        data = self._data or b""
+        if not data:
+            return "ไม่มีข้อมูล"
+
+        strings: List[str] = []
+        current: List[str] = []
+        for byte in data:
+            if 32 <= byte < 127:
+                current.append(chr(byte))
+            else:
+                if len(current) >= 4:
+                    strings.append("".join(current))
+                current = []
+        if len(current) >= 4:
+            strings.append("".join(current))
+
+        lines = [f"Strings found: {len(strings)} (min length 4)"]
+        lines.append("-")
+        for index, value in enumerate(strings[:100], start=1):
+            lines.append(f"{index:4}. {value[:76]}")
+        if len(strings) > 100:
+            lines.append("")
+            lines.append(f"… and {len(strings) - 100} more strings")
+        return "\n".join(lines)
+
+    def _quick_transformer(self) -> str:
+        data = self._data or b""
+        head = data[:256]
+        lines = [f"Previewing first {len(head)} bytes"]
+
+        if head:
+            b64 = base64.b64encode(head).decode("ascii")
+            lines.append("")
+            lines.append("--- BASE64 ---")
+            for i in range(0, len(b64), 64):
+                lines.append(b64[i : i + 64])
+
+            hex_str = head.hex()
+            lines.append("")
+            lines.append("--- HEX ---")
+            for i in range(0, len(hex_str), 64):
+                lines.append(hex_str[i : i + 64])
+
+            lines.append("")
+            lines.append("--- BINARY (first 64 bytes) ---")
+            for i in range(0, min(64, len(head)), 8):
+                chunk = head[i : i + 8]
+                lines.append(" ".join(f"{b:08b}" for b in chunk))
+
+            lines.append("")
+            lines.append("--- XOR Analysis (first 32 bytes) ---")
+            for key in (0x00, 0xFF, 0xAA, 0x55, 0x42):
+                xored = bytes(b ^ key for b in head[:32])
+                lines.append(f"XOR 0x{key:02X}: {xored.hex()[:64]}…")
+        else:
+            lines.append("ไม่มีข้อมูลสำหรับการแปลง")
+
+        return "\n".join(lines)
+
+    def _quick_metadata(self) -> str:
+        data = self._data or b""
+        lines: List[str] = []
+        if self.file_path:
+            path = Path(self.file_path)
+            try:
+                stat = path.stat()
+            except OSError:
+                stat = None
+            lines.append(f"File: {path.name}")
+            lines.append(f"Location: {path}")
+            if stat is not None:
+                lines.append(f"Size: {stat.st_size:,} bytes")
+                lines.append(f"Created: {time.ctime(stat.st_ctime)}")
+                lines.append(f"Modified: {time.ctime(stat.st_mtime)}")
+                lines.append(f"Accessed: {time.ctime(stat.st_atime)}")
+        else:
+            lines.append("File: (in-memory)")
+            lines.append(f"Size: {len(data):,} bytes")
+
+        lines.append("")
+        lines.append("Magic bytes: " + data[:16].hex())
+        lines.append("Detected type: " + self._detect_magic(data))
+
+        if self.file_path and Path(self.file_path).suffix.lower() in {".png", ".jpg", ".jpeg", ".tiff"}:
+            try:
+                img = Image.open(io.BytesIO(data))
+            except Exception:
+                lines.append("")
+                lines.append("Image metadata: ไม่สามารถอ่านไฟล์ภาพได้")
+            else:
+                lines.append("")
+                lines.append("Image metadata:")
+                lines.append(f"  Format: {img.format}")
+                lines.append(f"  Mode: {img.mode}")
+                lines.append(f"  Size: {img.size[0]} x {img.size[1]}")
+                if hasattr(img, "_getexif") and img._getexif():
+                    lines.append("  EXIF entries available")
+                else:
+                    lines.append("  No EXIF data detected")
+
+        lines.append("")
+        lines.append("Suspicious indicators:")
+        eof_markers = {
+            b"\xFF\xD9": "JPEG EOI",
+            b"IEND\xAE\x42\x60\x82": "PNG IEND",
+        }
+        for marker, name in eof_markers.items():
+            pos = data.rfind(marker)
+            if pos != -1 and pos + len(marker) < len(data):
+                trailing = len(data) - (pos + len(marker))
+                lines.append(f"  ⚠️  {trailing} bytes after {name} marker (possible append)")
+
+        return "\n".join(lines)
 
     # ------------------------------------------------------------------
     # File info helpers
