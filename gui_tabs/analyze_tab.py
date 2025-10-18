@@ -3,34 +3,300 @@
 from __future__ import annotations
 
 import datetime
+import io
+import math
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
+import numpy as np
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QPixmap
+from PyQt5.QtGui import QColor, QPixmap, QPainter
 from PyQt5.QtWidgets import (
     QFileDialog,
+    QCheckBox,
     QFrame,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
     QMessageBox,
-    QPushButton,
     QPlainTextEdit,
+    QProgressBar,
+    QPushButton,
     QScrollArea,
+    QSizePolicy,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
-    QCheckBox,
 )
 
-from PIL import Image
+from PIL import Image, ImageQt
 
 from .common_widgets import RiskScoreWidget
 from utils.logger import setup_logger
+
+
+# ----------------------------- Visual helper utilities -----------------------------
+
+def _ensure_rgb(img: Image.Image) -> Image.Image:
+    """Normalize any PIL image into RGB mode."""
+
+    if img.mode == "RGB":
+        return img
+    return img.convert("RGB")
+
+
+def _downscale_if_needed(img: Image.Image, max_side: int = 1600) -> Image.Image:
+    """Prevent overly large previews from blocking the UI."""
+
+    width, height = img.size
+    scale = max(width, height) / float(max_side)
+    if scale <= 1:
+        return img
+    new_size = (int(round(width / scale)), int(round(height / scale)))
+    return img.resize(new_size, Image.LANCZOS)
+
+
+def _qpixmap_from_pil(img: Image.Image) -> QPixmap:
+    """Create a detached :class:`QPixmap` from a PIL image."""
+
+    qimage = ImageQt.ImageQt(img)  # type: ignore[call-arg]
+    return QPixmap.fromImage(qimage.copy())
+
+
+def luminance_histogram(rgb: np.ndarray) -> np.ndarray:
+    """Return a luminance histogram (Y channel) for an RGB numpy array."""
+
+    r = rgb[..., 0].astype(np.float32)
+    g = rgb[..., 1].astype(np.float32)
+    b = rgb[..., 2].astype(np.float32)
+    y = np.clip(0.299 * r + 0.587 * g + 0.114 * b, 0, 255).astype(np.uint8)
+    return np.bincount(y.ravel(), minlength=256).astype(np.int64)
+
+
+def draw_histogram_pixmap(hist: np.ndarray, size: Tuple[int, int] = (512, 160)) -> QPixmap:
+    """Render a luminance histogram onto a :class:`QPixmap`."""
+
+    width, height = size
+    pixmap = QPixmap(width, height)
+    pixmap.fill(Qt.white)
+
+    painter = QPainter(pixmap)
+    painter.setPen(Qt.NoPen)
+    max_value = float(hist.max() if hist.max() > 0 else 1)
+    bar_width = max(1.0, width / 256.0)
+    bar_color = QColor(31, 41, 55)
+    for index, value in enumerate(hist):
+        bar_height = (value / max_value) * (height - 6)
+        x_pos = int(index * bar_width)
+        y_pos = int(height - bar_height)
+        painter.setBrush(bar_color)
+        painter.drawRect(x_pos, y_pos, max(1, int(bar_width - 1)), int(bar_height))
+    painter.end()
+    return pixmap
+
+
+def chi_square_parity_suspicion(hist: np.ndarray) -> float:
+    """Chi-square even/odd parity heuristic scaled to 0..100."""
+
+    stat = 0.0
+    for i in range(0, 256, 2):
+        even = hist[i]
+        odd = hist[i + 1]
+        total = even + odd
+        if total == 0:
+            continue
+        expected = total / 2.0
+        stat += ((even - expected) ** 2) / expected
+        stat += ((odd - expected) ** 2) / expected
+    score = 100.0 - min(100.0, math.log1p(stat) * 18.0)
+    return max(0.0, min(100.0, score))
+
+
+def histogram_flatness_score(hist: np.ndarray) -> float:
+    """Measure the flatness of a histogram (lower variance → higher score)."""
+
+    total = float(hist.sum())
+    if total <= 0:
+        return 0.0
+    mean = total / float(len(hist))
+    variance = float(((hist - mean) ** 2).mean())
+    flatness = 100.0 - min(100.0, math.log1p(math.sqrt(variance)) * 20.0)
+    return max(0.0, min(100.0, flatness))
+
+
+def compute_ela_heatmap(image: Image.Image, jpeg_quality: int = 75, scale: float = 8.0) -> Tuple[Image.Image, float]:
+    """Compute an Error Level Analysis heatmap and its heuristic score."""
+
+    base = _ensure_rgb(image)
+    buffer = io.BytesIO()
+    base.save(buffer, format="JPEG", quality=jpeg_quality)
+    buffer.seek(0)
+    recompressed = Image.open(buffer).convert("RGB")
+
+    original_arr = np.asarray(base, dtype=np.int16)
+    recompressed_arr = np.asarray(recompressed, dtype=np.int16)
+    diff = np.abs(original_arr - recompressed_arr)
+    channel_diff = diff.mean(axis=2)
+
+    avg = float(channel_diff.mean())
+    suspicion = max(0.0, min(100.0, (avg / 10.0) * 100.0))
+
+    amplified = np.clip(channel_diff * scale, 0, 255).astype(np.uint8)
+    heat = np.zeros((amplified.shape[0], amplified.shape[1], 3), dtype=np.uint8)
+    heat[..., 0] = amplified
+    heat[..., 2] = 255 - amplified
+    heatmap = Image.fromarray(heat, mode="RGB")
+    return heatmap, suspicion
+
+
+def aggregate_risk(chi: float, ela: float, flat: float, ml: float = 0.0) -> int:
+    """Combine heuristic sub-scores into a single 0..100 score."""
+
+    weights = (0.35, 0.35, 0.25, 0.05)
+    score = chi * weights[0] + ela * weights[1] + flat * weights[2] + ml * weights[3]
+    return int(round(max(0.0, min(100.0, score))))
+
+
+class PreviewLabel(QLabel):
+    """Display widget for image previews that keeps aspect ratio on resize."""
+
+    def __init__(self, placeholder: str, min_size: Tuple[int, int], parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self._placeholder = placeholder
+        self._pixmap = QPixmap()
+        self.setAlignment(Qt.AlignCenter)
+        self.setMinimumSize(*min_size)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setWordWrap(True)
+        self.setStyleSheet(
+            "background-color: #ffffff; border: 1px dashed #d1d5db; "
+            "border-radius: 6px; padding: 8px;"
+        )
+        self.setText(placeholder)
+
+    def set_preview(self, pixmap: QPixmap) -> None:
+        self._pixmap = pixmap
+        self._update_scaled_pixmap()
+
+    def clear_preview(self) -> None:
+        self._pixmap = QPixmap()
+        super().setPixmap(self._pixmap)
+        self.setText(self._placeholder)
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self._update_scaled_pixmap()
+
+    def _update_scaled_pixmap(self) -> None:
+        if not self._pixmap.isNull():
+            scaled = self._pixmap.scaled(
+                self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation
+            )
+            super().setPixmap(scaled)
+            self.setText("")
+
+
+class VisualRiskGauge(QFrame):
+    """Compact score widget inspired by the React Analyze gauge."""
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("visualRiskGauge")
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(6)
+
+        title = QLabel("Risk Score")
+        title.setAlignment(Qt.AlignCenter)
+        title.setStyleSheet("font-weight: 600;")
+        self.score_label = QLabel("—")
+        self.score_label.setAlignment(Qt.AlignCenter)
+        self.score_label.setStyleSheet("font-size: 32px; font-weight: 800;")
+        self.level_label = QLabel("ยังไม่ได้วิเคราะห์")
+        self.level_label.setAlignment(Qt.AlignCenter)
+        self.status_label = QLabel("เลือกไฟล์แล้วกดวิเคราะห์เพื่อเริ่มต้น")
+        self.status_label.setAlignment(Qt.AlignCenter)
+        self.status_label.setWordWrap(True)
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 100)
+        self.progress.setTextVisible(False)
+        self.progress.setFixedHeight(12)
+
+        layout.addWidget(title)
+        layout.addWidget(self.score_label)
+        layout.addWidget(self.level_label)
+        layout.addWidget(self.progress)
+        layout.addWidget(self.status_label)
+
+        self._apply_palette(QColor(99, 102, 241))
+        self.reset()
+
+    @staticmethod
+    def _color_for(score: int) -> QColor:
+        if score < 40:
+            return QColor(34, 197, 94)
+        if score < 70:
+            return QColor(245, 158, 11)
+        return QColor(239, 68, 68)
+
+    @staticmethod
+    def _label_for(score: int) -> str:
+        if score < 40:
+            return "ต่ำ (Low)"
+        if score < 70:
+            return "กลาง (Medium)"
+        return "สูง (High)"
+
+    def _apply_palette(self, color: QColor) -> None:
+        accent = f"rgb({color.red()}, {color.green()}, {color.blue()})"
+        self.score_label.setStyleSheet(
+            f"font-size: 32px; font-weight: 800; color: {accent};"
+        )
+        self.level_label.setStyleSheet(f"font-weight: 600; color: {accent};")
+        self.progress.setStyleSheet(
+            "QProgressBar { background:#e5e7eb; border-radius:5px; }"
+            f"QProgressBar::chunk {{ background: {accent}; border-radius:5px; }}"
+        )
+
+    def reset(self) -> None:
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
+        self._apply_palette(QColor(99, 102, 241))
+        self.score_label.setText("—")
+        self.level_label.setText("ยังไม่ได้วิเคราะห์")
+        self.status_label.setText("เลือกไฟล์แล้วกดวิเคราะห์เพื่อเริ่มต้น")
+
+    def show_analyzing(self) -> None:
+        self._apply_palette(QColor(99, 102, 241))
+        self.progress.setRange(0, 0)
+        self.score_label.setText("…")
+        self.level_label.setText("กำลังวิเคราะห์…")
+        self.status_label.setText("ระบบกำลังรวบรวมผลจากโมดูลต่าง ๆ")
+
+    def set_score(self, score: int) -> None:
+        bounded = max(0, min(100, int(score)))
+        color = self._color_for(bounded)
+        self._apply_palette(color)
+        self.progress.setRange(0, 100)
+        self.progress.setValue(bounded)
+        self.score_label.setText(str(bounded))
+        self.level_label.setText(self._label_for(bounded))
+        if bounded < 40:
+            status = "ประเมินว่าเสี่ยงต่ำ"
+        elif bounded < 70:
+            status = "พบสัญญาณที่น่าสงสัย"
+        else:
+            status = "มีความเป็นไปได้สูงว่ามีการซ่อนข้อมูล"
+        self.status_label.setText(status)
+
+    def set_status_text(self, text: str) -> None:
+        self.status_label.setText(text)
 
 
 class AnalyzeTab(QWidget):
@@ -62,6 +328,20 @@ class AnalyzeTab(QWidget):
             "audio": "ยังไม่ได้เลือกไฟล์เสียง...",
             "video": "ยังไม่ได้เลือกไฟล์วิดีโอ...",
         }
+        self.image_suffixes = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
+
+        self._preview_image: Optional[Image.Image] = None
+        self._preview_array: Optional[np.ndarray] = None
+        self._preview_hist: Optional[np.ndarray] = None
+        self._visual_scores: Dict[str, float] = {}
+        self.visual_metric_labels: Dict[str, QLabel] = {}
+        self.visual_metric_names: Dict[str, str] = {
+            "chi_square": "Chi-Square",
+            "ela": "ELA",
+            "histogram": "Histogram",
+            "ml": "Machine Learning",
+        }
+        self.visual_group: Optional[QGroupBox] = None
 
         self.logger = setup_logger(__name__)
         self._init_ui()
@@ -79,9 +359,8 @@ class AnalyzeTab(QWidget):
         container_layout.setContentsMargins(16, 16, 16, 16)
         container_layout.setSpacing(18)
 
-        top_widget = QWidget()
-        top_layout = QHBoxLayout(top_widget)
-        top_layout.setSpacing(18)
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.setChildrenCollapsible(False)
 
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
@@ -90,16 +369,20 @@ class AnalyzeTab(QWidget):
         left_layout.addWidget(self._create_settings_group())
         left_layout.addWidget(self._create_action_section())
         left_layout.addStretch()
-        top_layout.addWidget(left_widget, 4)
+        left_widget.setMinimumWidth(320)
+        splitter.addWidget(left_widget)
 
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
         right_layout.setSpacing(16)
+        right_layout.addWidget(self._create_visual_panel())
         right_layout.addWidget(self._create_log_group())
         right_layout.addWidget(self._create_summary_group())
-        top_layout.addWidget(right_widget, 6)
+        splitter.addWidget(right_widget)
+        splitter.setStretchFactor(0, 3)
+        splitter.setStretchFactor(1, 5)
 
-        container_layout.addWidget(top_widget)
+        container_layout.addWidget(splitter)
 
         scroll.setWidget(container)
         main_layout.addWidget(scroll)
@@ -179,8 +462,67 @@ class AnalyzeTab(QWidget):
         layout.addWidget(self.analyze_button)
         return wrapper
 
+    def _create_visual_panel(self) -> QGroupBox:
+        group = QGroupBox("3. ภาพรวมการตรวจวิเคราะห์เชิงภาพ")
+        layout = QVBoxLayout(group)
+        layout.setSpacing(12)
+
+        header_row = QHBoxLayout()
+        header_row.setSpacing(12)
+
+        self.visual_gauge = VisualRiskGauge()
+        self.visual_gauge.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        header_row.addWidget(self.visual_gauge, 1)
+
+        metrics_frame = QFrame()
+        metrics_frame.setObjectName("visualMetricsFrame")
+        metrics_layout = QVBoxLayout(metrics_frame)
+        metrics_layout.setContentsMargins(12, 12, 12, 12)
+        metrics_layout.setSpacing(6)
+        metrics_title = QLabel("คะแนนเทคนิค (0-100)")
+        metrics_title.setStyleSheet("font-weight: 600;")
+        metrics_layout.addWidget(metrics_title)
+        self.visual_metric_labels.clear()
+        for key, label in self.visual_metric_names.items():
+            metric_label = QLabel(f"{label}: —")
+            metric_label.setObjectName("visualMetricLabel")
+            metrics_layout.addWidget(metric_label)
+            self.visual_metric_labels[key] = metric_label
+        metrics_layout.addStretch()
+        header_row.addWidget(metrics_frame, 1)
+
+        layout.addLayout(header_row)
+
+        preview_grid = QGridLayout()
+        preview_grid.setSpacing(12)
+        self.original_preview = PreviewLabel("ยังไม่มีภาพตัวอย่าง", (320, 220))
+        self.ela_preview = PreviewLabel("ยังไม่มี Heatmap", (320, 220))
+        self.histogram_preview = PreviewLabel("ยังไม่มีฮิสโตแกรม", (340, 180))
+        preview_grid.addWidget(self._wrap_preview_widget("ภาพต้นฉบับ", self.original_preview), 0, 0)
+        preview_grid.addWidget(self._wrap_preview_widget("ELA Heatmap", self.ela_preview), 0, 1)
+        preview_grid.addWidget(
+            self._wrap_preview_widget("Luminance Histogram", self.histogram_preview), 1, 0, 1, 2
+        )
+        layout.addLayout(preview_grid)
+
+        self.visual_group = group
+        self._clear_visual_panel()
+        self._update_visual_state_for_media(self.selected_media_type)
+        return group
+
+    def _wrap_preview_widget(self, title: str, widget: PreviewLabel) -> QFrame:
+        frame = QFrame()
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        caption = QLabel(title)
+        caption.setStyleSheet("font-weight: 600;")
+        layout.addWidget(caption)
+        layout.addWidget(widget)
+        return frame
+
     def _create_log_group(self) -> QGroupBox:
-        group = QGroupBox("3. Log การทำงานสด")
+        group = QGroupBox("4. Log การทำงานสด")
         layout = QVBoxLayout(group)
         layout.setSpacing(10)
         self.live_log = QPlainTextEdit()
@@ -201,7 +543,7 @@ class AnalyzeTab(QWidget):
         return group
 
     def _create_summary_group(self) -> QGroupBox:
-        group = QGroupBox("4. สรุปผลและคำแนะนำ")
+        group = QGroupBox("5. สรุปผลและคำแนะนำ")
         layout = QVBoxLayout(group)
         layout.setSpacing(12)
 
@@ -263,6 +605,120 @@ class AnalyzeTab(QWidget):
         self.guidance_frame.setVisible(False)
         return group
 
+    def _clear_visual_panel(self) -> None:
+        self._preview_image = None
+        self._preview_array = None
+        self._preview_hist = None
+        self._visual_scores = {}
+        if hasattr(self, "original_preview"):
+            self.original_preview.clear_preview()
+        if hasattr(self, "ela_preview"):
+            self.ela_preview.clear_preview()
+        if hasattr(self, "histogram_preview"):
+            self.histogram_preview.clear_preview()
+        self._apply_metric_labels({})
+        if hasattr(self, "visual_gauge"):
+            self.visual_gauge.reset()
+
+    def _update_visual_state_for_media(self, media_type: str) -> None:
+        if self.visual_group is not None:
+            self.visual_group.setVisible(media_type == "image")
+        if media_type != "image":
+            self._clear_visual_panel()
+        elif self.file_path and self.file_path.suffix.lower() in self.image_suffixes:
+            self._prepare_visual_preview()
+        else:
+            self._clear_visual_panel()
+
+    def _prepare_visual_preview(self) -> None:
+        if self.selected_media_type != "image" or not self.file_path:
+            self._clear_visual_panel()
+            return
+        try:
+            image = Image.open(str(self.file_path))
+            image = _ensure_rgb(_downscale_if_needed(image))
+        except Exception as exc:  # pragma: no cover - GUI feedback
+            self.logger.warning("Cannot load preview for %s: %s", self.file_path, exc)
+            self._clear_visual_panel()
+            if hasattr(self, "visual_gauge"):
+                self.visual_gauge.set_status_text("ไม่สามารถเปิดไฟล์ภาพเพื่อแสดงตัวอย่างได้")
+            return
+
+        self._preview_image = image
+        self._preview_array = np.asarray(image, dtype=np.uint8)
+        self._preview_hist = luminance_histogram(self._preview_array)
+
+        if hasattr(self, "original_preview"):
+            self.original_preview.set_preview(_qpixmap_from_pil(image))
+        heatmap, ela_score = compute_ela_heatmap(image)
+        if hasattr(self, "ela_preview"):
+            self.ela_preview.set_preview(_qpixmap_from_pil(heatmap))
+        if hasattr(self, "histogram_preview") and self._preview_hist is not None:
+            self.histogram_preview.set_preview(draw_histogram_pixmap(self._preview_hist))
+
+        self._visual_scores = {
+            "chi_square": chi_square_parity_suspicion(self._preview_hist),
+            "histogram": histogram_flatness_score(self._preview_hist),
+            "ela": ela_score,
+        }
+        self._apply_metric_labels(self._visual_scores, approx=True)
+        if hasattr(self, "visual_gauge"):
+            self.visual_gauge.reset()
+            self.visual_gauge.set_status_text("พร้อมสำหรับการวิเคราะห์เชิงลึก")
+
+    def _apply_metric_labels(
+        self,
+        scores: Optional[Dict[str, float]] = None,
+        *,
+        approx: bool = False,
+        approx_keys: Optional[Iterable[str]] = None,
+    ) -> None:
+        display_scores = scores or {}
+        approx_set = set(approx_keys or [])
+        for key, label in self.visual_metric_labels.items():
+            name = self.visual_metric_names.get(key, key)
+            value = display_scores.get(key)
+            if value is None:
+                label.setText(f"{name}: —")
+            else:
+                is_approx = approx or key in approx_set
+                prefix = "≈ " if is_approx else ""
+                label.setText(f"{name}: {prefix}{value:.0f} / 100")
+
+    def _update_visual_after_analysis(self, details: Dict[str, float], overall_score: float) -> None:
+        if not hasattr(self, "visual_gauge"):
+            return
+
+        if self.selected_media_type != "image":
+            self.visual_gauge.set_score(int(round(overall_score)))
+            self.visual_gauge.set_status_text("ผลรวมจากโมดูลวิเคราะห์")
+            return
+
+        combined: Dict[str, float] = dict(self._visual_scores)
+        for key in self.visual_metric_names:
+            if key in details:
+                raw_value = details.get(key)
+                if isinstance(raw_value, bool):
+                    continue
+                numeric = self._safe_float(raw_value)
+                combined[key] = numeric
+
+        score = overall_score
+        if (not score or score == 0.0) and not details and combined:
+            score = float(
+                aggregate_risk(
+                    combined.get("chi_square", 0.0),
+                    combined.get("ela", 0.0),
+                    combined.get("histogram", 0.0),
+                    combined.get("ml", 0.0),
+                )
+            )
+
+        approx_keys = {key for key in combined.keys() if key not in details}
+        self._apply_metric_labels(combined, approx_keys=approx_keys)
+        self.visual_gauge.set_score(int(round(score)))
+        self.visual_gauge.set_status_text("อัปเดตจากผลการวิเคราะห์ล่าสุด")
+
     # ------------------------------------------------------------------
     # Event handlers and worker integration
     # ------------------------------------------------------------------
@@ -282,6 +738,8 @@ class AnalyzeTab(QWidget):
         if support_text and hasattr(self, "support_label"):
             self.support_label.setText(support_text)
 
+        self._update_visual_state_for_media(media_type)
+
     def _create_info_label(self, text: str) -> QLabel:
         label = QLabel(text)
         label.setObjectName("infoBox")
@@ -299,17 +757,21 @@ class AnalyzeTab(QWidget):
             self.file_path = Path(filename)
             self.file_input.setText(filename)
             if self.selected_media_type == "image":
-                pixmap = QPixmap(filename)
-                if not pixmap.isNull():
-                    self.risk_score_widget.desc_label.setText(
-                        f"พร้อมวิเคราะห์ไฟล์: {self.file_path.name}"
-                    )
+                self._prepare_visual_preview()
+                self.risk_score_widget.desc_label.setText(
+                    f"พร้อมวิเคราะห์ไฟล์: {self.file_path.name}"
+                )
+            else:
+                self._clear_visual_panel()
             self.analyze_button.setEnabled(True)
 
     def _start_analysis(self) -> None:
         if not self.file_path:
             QMessageBox.warning(self, "คำเตือน", "กรุณาเลือกไฟล์ที่จะวิเคราะห์")
             return
+
+        if hasattr(self, "visual_gauge") and self.selected_media_type == "image":
+            self.visual_gauge.show_analyzing()
 
         self._reset_summary()
         self.live_log.clear()
@@ -392,6 +854,7 @@ class AnalyzeTab(QWidget):
         self.summary_message.setText(description)
 
         self.risk_score_widget.set_score(int(round(score)), level, description, palette["accent"])
+        self._update_visual_after_analysis(details, score)
 
         rows: List[Tuple[str, str, str]] = []
         rows.extend(self._build_statistical_rows(details))
