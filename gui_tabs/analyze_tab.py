@@ -10,7 +10,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor, QPixmap, QPainter
+from PyQt5.QtGui import QColor, QImage, QPixmap, QPainter
 from PyQt5.QtWidgets import (
     QFileDialog,
     QCheckBox,
@@ -65,8 +65,19 @@ def _downscale_if_needed(img: Image.Image, max_side: int = 1600) -> Image.Image:
 def _qpixmap_from_pil(img: Image.Image) -> QPixmap:
     """Create a detached :class:`QPixmap` from a PIL image."""
 
-    qimage = ImageQt.ImageQt(img)  # type: ignore[call-arg]
-    return QPixmap.fromImage(qimage.copy())
+    try:
+        qimage = ImageQt.ImageQt(img)  # type: ignore[call-arg]
+        return QPixmap.fromImage(qimage.copy())
+    except AttributeError:
+        # Some Pillow builds omit ``ImageQt.ImageQt`` (e.g. when Qt bindings are
+        # unavailable at install time). Fall back to a manual conversion to a
+        # :class:`QImage` to preserve preview functionality.
+        rgb_img = _ensure_rgb(img)
+        data = rgb_img.tobytes("raw", "RGB")
+        qimage = QImage(
+            data, rgb_img.width, rgb_img.height, QImage.Format_RGB888
+        )
+        return QPixmap.fromImage(qimage.copy())
 
 
 def luminance_histogram(rgb: np.ndarray) -> np.ndarray:
