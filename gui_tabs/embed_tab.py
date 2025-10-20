@@ -700,7 +700,7 @@ class EmbedTab(QWidget):
         recommendation = result.get("recommendation")
         if not recommendation:
             try:
-                from steganography.adaptive import AdaptiveSteganography
+                from steganography_module.adaptive import AdaptiveSteganography
 
                 adaptive = AdaptiveSteganography()
                 recommendation = adaptive.get_recommended_settings(

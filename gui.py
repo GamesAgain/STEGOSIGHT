@@ -109,7 +109,7 @@ class WorkerThread(QThread):
     def _embed(self) -> Dict[str, Any]:
         try:
             from cryptography_module.encryption import encrypt_data
-            from steganography.appender import append_payload_to_file
+            from steganography_module.appender import append_payload_to_file
 
             cover_path = Path(self.params["cover_path"])
             data = self.params["secret_data"]
@@ -141,21 +141,21 @@ class WorkerThread(QThread):
                 actual_method = "append"
                 media_type = "image"
             elif method in {"audio_adaptive", "audio_lsb"}:
-                from steganography.audio import AudioSteganography
+                from steganography_module.audio import AudioSteganography
 
                 audio_engine = AudioSteganography()
                 stego_path = audio_engine.embed(cover_path, data, output_path=output_path)
                 actual_method = "audio_lsb" if method == "audio_adaptive" else method
                 media_type = "audio"
             elif method in {"video_adaptive", "video_lsb"}:
-                from steganography.video import VideoSteganography
+                from steganography_module.video import VideoSteganography
 
                 video_engine = VideoSteganography()
                 stego_path = video_engine.embed(cover_path, data, output_path=output_path)
                 actual_method = "video_lsb" if method == "video_adaptive" else method
                 media_type = "video"
             else:
-                from steganography.adaptive import AdaptiveSteganography
+                from steganography_module.adaptive import AdaptiveSteganography
 
                 adaptive_engine = AdaptiveSteganography()
                 stego_path = adaptive_engine.embed(
@@ -170,7 +170,7 @@ class WorkerThread(QThread):
 
             if auto_analyze and media_type == "image":
                 self._step(80, "กำลังวิเคราะห์ความเสี่ยง…")
-                from steganalysis.risk_scoring import RiskScorer
+                from steganalysis_module.risk_scoring import RiskScorer
 
                 scorer = RiskScorer()
                 risk_score = scorer.calculate_risk(stego_path)
@@ -211,7 +211,7 @@ class WorkerThread(QThread):
             out_path = Path(temp_name)
             try:
                 if method == "append":
-                    from steganography.appender import append_payload_to_file
+                    from steganography_module.appender import append_payload_to_file
 
                     append_payload_to_file(
                         cover_path,
@@ -267,7 +267,7 @@ class WorkerThread(QThread):
 
         try:
             from cryptography_module.encryption import decrypt_data
-            from steganography.appender import (
+            from steganography_module.appender import (
                 extract_appended_payload,
                 has_appended_payload,
             )
@@ -275,7 +275,7 @@ class WorkerThread(QThread):
             AdaptiveSteganographyCls: Optional[type] = None
             adaptive_import_error: Optional[Exception] = None
             try:
-                from steganography.adaptive import AdaptiveSteganography as _AdaptiveSteganography
+                from steganography_module.adaptive import AdaptiveSteganography as _AdaptiveSteganography
 
                 AdaptiveSteganographyCls = _AdaptiveSteganography
             except Exception as exc:  # pragma: no cover - optional dependency
@@ -293,7 +293,7 @@ class WorkerThread(QThread):
             if requested_method in audio_methods:
                 self._step(40, "กำลังดึงข้อมูลเสียง…")
                 try:
-                    from steganography.audio import AudioSteganography
+                    from steganography_module.audio import AudioSteganography
                 except Exception as exc:  # pragma: no cover - optional dependency
                     raise RuntimeError("ไม่สามารถโหลดโมดูลสำหรับถอดข้อมูลเสียงได้") from exc
 
@@ -334,7 +334,7 @@ class WorkerThread(QThread):
             if requested_method in video_methods:
                 self._step(40, "กำลังดึงข้อมูลวิดีโอ…")
                 try:
-                    from steganography.video import VideoSteganography
+                    from steganography_module.video import VideoSteganography
                 except Exception as exc:  # pragma: no cover - optional dependency
                     raise RuntimeError("ไม่สามารถโหลดโมดูลสำหรับถอดข้อมูลวิดีโอได้") from exc
 
@@ -471,7 +471,7 @@ class WorkerThread(QThread):
 
     def _analyze(self) -> Dict[str, Any]:
         try:
-            from steganalysis.risk_scoring import RiskScorer
+            from steganalysis_module.risk_scoring import RiskScorer
 
             file_path = self.params["file_path"]
             methods = self.params.get("methods", ["all"])

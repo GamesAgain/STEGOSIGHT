@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from steganography.audio import AudioSteganography
+from steganography_module.audio import AudioSteganography
 
 
 def _generate_wav(path: Path, *, duration: float = 0.2) -> None:

@@ -96,7 +96,7 @@ class STEGOSIGHTCLI:
 
         method = self.args.method
         print(f"\n[3/5] Embedding data using {method} method…")
-        from steganography.adaptive import AdaptiveSteganography
+        from steganography_module.adaptive import AdaptiveSteganography
 
         stego = AdaptiveSteganography()
         output_path = Path(self.args.output) if self.args.output else None
@@ -109,7 +109,7 @@ class STEGOSIGHTCLI:
 
         if not self.args.no_analysis:
             print("\n[4/5] Analyzing risk…")
-            from steganalysis.risk_scoring import RiskScorer
+            from steganalysis_module.risk_scoring import RiskScorer
 
             scorer = RiskScorer()
             risk_result = scorer.calculate_risk(stego_path)
@@ -158,7 +158,7 @@ class STEGOSIGHTCLI:
         print(f"  ✓ File: {stego_path.name} ({stego_path.stat().st_size / 1024:.2f} KB)")
 
         print(f"\n[2/3] Extracting data using {self.args.method} method…")
-        from steganography.adaptive import AdaptiveSteganography
+        from steganography_module.adaptive import AdaptiveSteganography
 
         stego = AdaptiveSteganography()
         extracted_data = stego.extract(stego_path, self.args.method)
@@ -217,7 +217,7 @@ class STEGOSIGHTCLI:
             return False
 
         print("[1/2] Running analysis…")
-        from steganalysis.risk_scoring import RiskScorer
+        from steganalysis_module.risk_scoring import RiskScorer
 
         scorer = RiskScorer()
         methods = [self.args.analysis_method] if self.args.analysis_method else ["all"]

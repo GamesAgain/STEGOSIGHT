@@ -154,3 +154,23 @@ TypeError: log_operation() missing 1 required positional argument: 'operation'
 2025-10-16 22:34:16 [INFO] __main__ - Starting STEGOSIGHT in GUI mode
 2025-10-16 22:34:16 [INFO] gui - STEGOSIGHT GUI initialized
 2025-10-16 22:34:16 [INFO] __main__ - GUI initialized successfully
+2025-10-20 18:41:59 [INFO] __main__ - Starting STEGOSIGHT v0.1.0
+2025-10-20 18:41:59 [INFO] __main__ - Python version: 3.10.0 (tags/v3.10.0:b494f59, Oct  4 2021, 19:00:18) [MSC v.1929 64 bit (AMD64)]
+2025-10-20 18:41:59 [INFO] __main__ - Platform: win32
+2025-10-20 18:42:00 [INFO] __main__ - Starting STEGOSIGHT in GUI mode
+2025-10-20 18:42:04 [INFO] __main__ - GUI initialized successfully
+2025-10-20 18:42:29 [INFO] __main__ - Starting STEGOSIGHT v0.1.0
+2025-10-20 18:42:29 [INFO] __main__ - Python version: 3.10.0 (tags/v3.10.0:b494f59, Oct  4 2021, 19:00:18) [MSC v.1929 64 bit (AMD64)]
+2025-10-20 18:42:29 [INFO] __main__ - Platform: win32
+2025-10-20 18:42:29 [INFO] __main__ - Starting STEGOSIGHT in GUI mode
+2025-10-20 18:42:31 [INFO] __main__ - GUI initialized successfully
+2025-10-20 18:43:32 [INFO] __main__ - Starting STEGOSIGHT v0.1.0
+2025-10-20 18:43:32 [INFO] __main__ - Python version: 3.10.0 (tags/v3.10.0:b494f59, Oct  4 2021, 19:00:18) [MSC v.1929 64 bit (AMD64)]
+2025-10-20 18:43:32 [INFO] __main__ - Platform: win32
+2025-10-20 18:43:33 [INFO] __main__ - Starting STEGOSIGHT in GUI mode
+2025-10-20 18:43:34 [INFO] __main__ - GUI initialized successfully
+2025-10-20 19:19:38 [INFO] __main__ - Starting STEGOSIGHT v0.1.0
+2025-10-20 19:19:38 [INFO] __main__ - Python version: 3.10.0 (tags/v3.10.0:b494f59, Oct  4 2021, 19:00:18) [MSC v.1929 64 bit (AMD64)]
+2025-10-20 19:19:38 [INFO] __main__ - Platform: win32
+2025-10-20 19:19:39 [INFO] __main__ - Starting STEGOSIGHT in GUI mode
+2025-10-20 19:19:42 [INFO] __main__ - GUI initialized successfully

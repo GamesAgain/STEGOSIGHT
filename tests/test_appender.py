@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from steganography.appender import (
+from steganography_module.appender import (
     APPEND_MARKER,
     AppendedPayload,
     append_payload_to_file,

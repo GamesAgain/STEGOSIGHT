@@ -7,7 +7,7 @@ import pytest
 
 cv2 = pytest.importorskip("cv2")
 
-from steganography.video import VideoSteganography
+from steganography_module.video import VideoSteganography
 
 
 def _generate_video(path: Path, *, frames: int = 8) -> None:
