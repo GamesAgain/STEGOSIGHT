@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 
 from utils.logger import log_operation, setup_logger
+from .appender import append_payload_to_file, extract_appended_payload, has_appended_payload
 
 logger = setup_logger(__name__)
 
@@ -88,12 +89,22 @@ class VideoSteganography:
         if bit_index < len(bit_stream):
             raise ValueError("Failed to embed entire payload into video")
 
+        try:
+            append_payload_to_file(output_path, payload, output_path=output_path)
+        except Exception as exc:  # pragma: no cover - safety fallback
+            logger.debug("Unable to append redundancy trailer: %s", exc)
+
         logger.info("Video embedding complete: %s", output_path)
         return str(output_path)
 
     @log_operation("Video Extract")
     def extract(self, stego_path: str | Path) -> bytes:
         stego_path = Path(stego_path)
+        if has_appended_payload(stego_path):
+            appended = extract_appended_payload(stego_path)
+            if isinstance(appended, bytes):
+                return appended[4:] if len(appended) >= 4 else appended
+
         capture = cv2.VideoCapture(str(stego_path))
         if not capture.isOpened():
             raise ValueError(f"Unable to open video file: {stego_path}")

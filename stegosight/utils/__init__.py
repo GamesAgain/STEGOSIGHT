@@ -1,7 +1,6 @@
-"""STEGOSIGHT utility helpers."""
+"""Compatibility imports for ``stegosight.utils``."""
 
-from .logger import log_operation, setup_logger
-from .validators import (
+from utils.validators import (
     ValidationError,
     ValidationResult,
     estimate_capacity,
@@ -10,8 +9,6 @@ from .validators import (
 )
 
 __all__ = [
-    "log_operation",
-    "setup_logger",
     "ValidationError",
     "ValidationResult",
     "estimate_capacity",
