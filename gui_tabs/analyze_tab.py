@@ -37,6 +37,7 @@ from PyQt5.QtWidgets import (
 from PIL import Image, ImageQt
 
 from .common_widgets import RiskScoreWidget
+from .styles import apply_analyze_styles
 from utils.logger import setup_logger
 
 
@@ -345,6 +346,7 @@ class AnalyzeTab(QWidget):
 
         self.logger = setup_logger(__name__)
         self._init_ui()
+        apply_analyze_styles(self)
 
     # ------------------------------------------------------------------
     # UI construction

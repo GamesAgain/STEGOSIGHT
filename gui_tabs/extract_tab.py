@@ -25,6 +25,7 @@ from PyQt5.QtWidgets import (
 )
 
 from .common_widgets import InfoPanel, MethodCard
+from .styles import apply_extract_styles
 from utils.payloads import unpack_payload
 
 
@@ -85,6 +86,7 @@ class ExtractTab(QWidget):
         }
 
         self._init_ui()
+        apply_extract_styles(self)
 
     # ------------------------------------------------------------------
     def _build_method_definitions(self) -> Dict[str, Dict[str, Dict[str, str]]]:

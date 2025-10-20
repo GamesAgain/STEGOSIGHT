@@ -26,6 +26,7 @@ from PyQt5.QtWidgets import (
 )
 
 from .common_widgets import InfoPanel, MethodCard
+from .styles import apply_embed_styles
 from utils.payloads import create_file_payload, create_text_payload
 
 
@@ -72,6 +73,7 @@ class EmbedTab(QWidget):
         }
 
         self._init_ui()
+        apply_embed_styles(self)
 
     # ------------------------------------------------------------------
     # UI construction helpers

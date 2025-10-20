@@ -3,6 +3,7 @@
 import os
 import sys
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -93,8 +94,6 @@ class WorkerThread(QThread):
                 result = self._extract()
             elif self.operation == "analyze":
                 result = self._analyze()
-            elif self.operation == "neutralize":
-                result = self._neutralize()
             else:
                 raise ValueError(f"Unknown operation: {self.operation}")
 
@@ -495,36 +494,14 @@ class WorkerThread(QThread):
                 "details": {"chi_square": True, "histogram": True, "ela": True},
             }
 
-    def _neutralize(self) -> Dict[str, Any]:
-        try:
-            from neutralization.metadata import strip_metadata
-            from neutralization.recompression import recompress_file
-            from neutralization.transform import apply_transforms
 
-            file_path = self.params["file_path"]
-            methods = self.params.get("methods", ["metadata"])
-            self._step(25, "กำลังทำให้เป็นกลาง…")
-            out = Path(file_path)
-            if "metadata" in methods:
-                out = Path(strip_metadata(str(out)))
-            if "recompress" in methods:
-                out = Path(recompress_file(str(out)))
-            if "transform" in methods:
-                out = Path(apply_transforms(str(out)))
-            self._step(100, "เสร็จสิ้น")
-            return {"output_path": str(out), "methods": methods}
-        except Exception as exc:  # pragma: no cover - simulated pipeline
-            logger.info("Neutralization pipeline not available, using simulator: %s", exc)
-            self._step(40, "ลบ metadata…")
-            self._step(70, "บีบอัดซ้ำ…")
-            self._step(100, "เสร็จสิ้น")
-            fn = Path(self.params["file_path"]).with_name(
-                "neutralized_" + Path(self.params["file_path"]).name
-            )
-            return {
-                "output_path": str(fn),
-                "methods": self.params.get("methods", ["metadata", "recompress"]),
-            }
+@dataclass(frozen=True)
+class TabDefinition:
+    """Descriptor for lazily constructed GUI tabs."""
+
+    key: str
+    title: str
+    factory: Callable[[], QWidget]
 
 
 class StegosightGUI(QMainWindow):
@@ -535,6 +512,8 @@ class StegosightGUI(QMainWindow):
         self.worker: Optional[WorkerThread] = None
         self.status_label: Optional[QLabel] = None
         self.progress_bar: Optional[QProgressBar] = None
+        self.tab_definitions: List[TabDefinition] = []
+        self.tab_widgets: Dict[str, QWidget] = {}
         self._init_ui()
 
     def _init_ui(self) -> None:
@@ -554,16 +533,26 @@ class StegosightGUI(QMainWindow):
         self.tabs = QTabWidget()
         self.tabs.setTabBar(FullTextTabBar(minimum_width=220, extra_padding=72))
         self.tabs.setUsesScrollButtons(True)
-        self.tabs.addTab(self._create_embed_tab(), " 🔒 ซ่อนข้อมูล (Embed)")
-        self.tabs.addTab(self._create_extract_tab(), " 🔓 ดึงข้อมูล (Extract)")
-        self.tabs.addTab(self._create_analyze_tab(), " 🔍 วิเคราะห์ (Analyze)")
-        self.tabs.addTab(self._create_workbench_tab(), " 🧪 Workbench (Steganalysis)")
+
+        self.tab_definitions = self._build_tab_definitions()
+        self.tab_widgets = {}
+        for tab_def in self.tab_definitions:
+            widget = tab_def.factory()
+            self.tab_widgets[tab_def.key] = widget
+            self.tabs.addTab(widget, tab_def.title)
         self._apply_tab_tooltips(self.tabs)
         main_layout.addWidget(self.tabs)
 
         main_layout.addWidget(self._create_status_bar())
 
         self.apply_stylesheet()
+
+    def _build_tab_definitions(self) -> List[TabDefinition]:
+        return [
+            TabDefinition("embed", " 🔒 ซ่อนข้อมูล (Embed)", self._create_embed_tab),
+            TabDefinition("extract", " 🔓 ดึงข้อมูล (Extract)", self._create_extract_tab),
+            TabDefinition("analyze", " 🔍 วิเคราะห์ (Analyze)", self._create_analyze_tab),
+        ]
 
     def _apply_tab_tooltips(self, tab_widget: QTabWidget) -> None:
         """Ensure the full tab labels remain accessible via tooltips."""
@@ -707,56 +696,18 @@ class StegosightGUI(QMainWindow):
                 color: white;
                 border: none;
                 padding: 10px 20px;
-                border-radius: 4px;
+                border-radius: 6px;
                 font-weight: 600;
                 font-size: 13px;
             }
             QPushButton:hover { background-color: #1976D2; }
-            #actionButton {
-                font-size: 15px;
-                font-weight: bold;
-                padding: 12px 25px;
-            }
-
-            #toggleButton {
-                background-color: white;
-                color: #333;
-                border: 2px solid #ddd;
-            }
-            #toggleButton:checked {
-                background-color: #1E88E5;
-                color: white;
-                border-color: #1E88E5;
-            }
-
-            #infoBox {
-                background-color: #e3f2fd;
-                border: 1px solid #bbdefb;
-                border-left: 4px solid #1E88E5;
-                padding: 12px;
-                border-radius: 4px;
-                font-size: 12px;
-                color: #0d47a1;
-            }
-            #previewArea {
-                border: 2px dashed #ccc;
-                border-radius: 8px;
-                background-color: #f9f9f9;
-                color: #999;
-            }
-            #infoPanel {
-                background-color: white;
-                padding: 15px;
-                border-radius: 8px;
-                border: 1px solid #ddd;
-                margin-top: 10px;
-            }
 
             #statusBar {
                 background-color: #e0e0e0;
                 padding: 10px 20px;
                 border-top: 1px solid #ccc;
             }
+
             QProgressBar {
                 border: none;
                 border-radius: 4px;
@@ -768,64 +719,9 @@ class StegosightGUI(QMainWindow):
             }
 
             QScrollArea { border: none; }
-
-            #methodCard {
-                background-color: white;
-                border: 2px solid #ddd;
-                border-radius: 8px;
-                padding: 15px;
-            }
-            #methodCard:hover {
-                border-color: #1E88E5;
-                background-color: #f0f7ff;
-            }
-            #methodCard[selected="true"] {
-                background-color: #e3f2fd;
-                border: 2px solid #1E88E5;
-            }
-            #methodCardTitle {
-                color: #1E88E5;
-                font-weight: bold;
-                font-size: 14px;
-            }
-            #methodCardDesc {
-                color: #666;
-                font-size: 12px;
-            }
-
-            #riskScoreWidget {
-                background-color: #f9f9f9;
-                border-radius: 8px;
-                padding: 20px;
-            }
-            #riskScoreLabel { font-size: 14px; color: #666; }
-            #riskScoreNumber { font-size: 64px; font-weight: bold; }
-            #riskScoreLevel { font-size: 16px; font-weight: bold; }
-            #riskScoreDesc { font-size: 13px; color: #666; margin-top: 10px; }
-
-            #comparisonCard {
-                border: 1px solid #ddd;
-                border-radius: 8px;
-                padding: 15px;
-                background-color: white;
-            }
-            #successBox {
-                background-color: #e8f5e9;
-                border-left: 4px solid #4CAF50;
-                padding: 12px;
-                border-radius: 4px;
-            }
-            #successBox QLabel {
-                color: #2e7d32;
-                font-size: 13px;
-            }
-            #successBox QPushButton {
-                padding: 8px 16px;
-                font-size: 13px;
-                margin-top: 8px;
-            }
-        """
+            """
         )
+
 
     # ---- Tab factories (lazy import prevents circular imports) ----
     def _create_embed_tab(self) -> QWidget:
@@ -842,16 +738,6 @@ class StegosightGUI(QMainWindow):
         from gui_tabs import AnalyzeTab
 
         return AnalyzeTab(self)
-
-    def _create_workbench_tab(self) -> QWidget:
-        from gui_tabs import WorkbenchTab
-
-        return WorkbenchTab(self)
-
-    def _create_neutralize_tab(self) -> QWidget:
-        from gui_tabs import NeutralizeTab
-
-        return NeutralizeTab(self)
 
     # ---- Worker management -------------------------------------------------
     def start_worker(
